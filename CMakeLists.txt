@@ -1,4 +1,3 @@
-
 # If not stated otherwise in this file or this component's license file the
 # following copyright and licenses apply:
 #
@@ -18,26 +17,38 @@
 
 cmake_minimum_required(VERSION 3.10.3)
 
-project( PluginActivator )
+project(PluginActivator)
 
-set( CMAKE_CXX_STANDARD 11 )
+set(CMAKE_CXX_STANDARD 11)
 
-add_executable(${PROJECT_NAME}
+find_package(WPEFramework)
+
+find_package(${NAMESPACE}Core REQUIRED)
+find_package(${NAMESPACE}COM REQUIRED)
+find_package(${NAMESPACE}Plugins REQUIRED)
+find_package(CompileSettingsDebug CONFIG REQUIRED)
+
+add_executable(PluginActivator
     source/Module.cpp
     source/Log.cpp
     source/main.cpp
     source/COMRPCStarter.cpp
 )
 
-target_link_libraries(${PROJECT_NAME}
+target_link_libraries(PluginActivator
     PRIVATE
-    CompileSettingsDebug::CompileSettingsDebug
     ${NAMESPACE}Core::${NAMESPACE}Core
     ${NAMESPACE}COM::${NAMESPACE}COM
     ${NAMESPACE}Plugins::${NAMESPACE}Plugins
+    CompileSettingsDebug::CompileSettingsDebug
+)
+
+target_compile_options(PluginActivator
+    PRIVATE
+    -Wall -Wextra -Werror
 )
 
 install(
-    TARGETS ${PROJECT_NAME}
+    TARGETS PluginActivator
     RUNTIME DESTINATION bin
 )
