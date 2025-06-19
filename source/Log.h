@@ -48,7 +48,7 @@ extern int gActivatorLogLevel;
 
 #define __LOG(level, plugin, fmt, ...)                                                                                                        \
     do {                                                                                                                                      \
-        if (__builtin_expect(((level) <= gActivatorLogLevel), 0))                                                                             \
+        if (((level) <= gActivatorLogLevel), 0)                                                                             \
             fprintf(stderr, "%s[%s:%d][%s] (%s) " fmt "\n", getLogLevel(level), __FILENAME__, __LINE__, __FUNCTION__, plugin, ##__VA_ARGS__); \
     } while (0)
 

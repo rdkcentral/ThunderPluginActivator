@@ -56,7 +56,7 @@ static void parseArgs(const int argc, char** argv)
         exit(EXIT_SUCCESS);
     }
 
-    struct option longopts[] = {
+/*    struct option longopts[] = {
         { "help", no_argument, nullptr, (int)'h' },
         { "retries", required_argument, nullptr, (int)'r' },
         { "delay", required_argument, nullptr, (int)'d' },
@@ -121,6 +121,10 @@ static void parseArgs(const int argc, char** argv)
     for (int i = optind; i < argc; i++) {
         printf("Warning: Non-option argument %s ignored\n", argv[i]);
     }
+
+    */
+
+    gPluginName = argv[1];
 }
 
 int main(int argc, char* argv[])
