@@ -54,25 +54,70 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
             uint32_t result = _connector.Open(RPC::CommunicationTimeOut, ControllerConnector::Connector());
             if (result != Core::ERROR_NONE) {
                 LOG_ERROR(_pluginName.c_str(), "Failed to get controller interface, error %u (%s)", result, Core::ErrorToString(result));
+                // Sleep, then try again
+                currentRetry++;
+                SleepMs(retryDelayMs);
+                continue;
             }
         }
 
-        Exchange::Controller::ILifeTime* lifetime = _connector.Interface();
+        Exchange::IPluginAsyncStateControl* asyncpluginstarter = _connector.ControllerInterface()->QueryInterfaceByCallsign<Exchange::IPluginAsyncStateControl>(_pluginName);
 
-        if (lifetime == nullptr) {
-            LOG_ERROR(_pluginName.c_str(), "Failed to open ILifeTime interface, will retry after %dms", retryDelayMs);
+        if (asyncpluginstarter == nullptr) {
+            LOG_ERROR(_pluginName.c_str(), "Failed to get IPluginAsyncStateControl interface, will retry after %dms", retryDelayMs);
             currentRetry++;
 
-            _connector.Close(RPC::CommunicationTimeOut);
+            //huppel todo in the original one they closed the channel, think does not add any value
+            // - connectionid in smartinterface type
+            // - use of controller smartinttype (and use of one connection)
 
             // Sleep, then try again
             SleepMs(retryDelayMs);
         } else {
-            // Will block until plugin is activated
-            Core::hresult result = lifetime->Activate(_pluginName.c_str());
+
+
+            Core::SinkType<PluginActivatorCallback> sink;
+            Core::OptionalType<uint8_t> retries(maxRetries - currentRetry);
+            Core::OptionalType<uint16_t> delay(retryDelayMs);
+            Core::hresult result = asyncpluginstarter->Activate(_pluginName, retries, delay, &sink);
 
             auto duration = stopwatch.Elapsed() / Core::Time::TicksPerMillisecond;
 
+            if (result == Core::ERROR_NONE) {
+
+            }
+            else if((result & COM_ERROR) != 0) { // we have a COM error, let's retry connection might be down
+                //huppel todo check ErrorToString for COM error
+                LOG_ERROR(_pluginName.c_str(), "Failed to send activate plugin request, COM error code %u (%s) after %ldms", result, Core::ErrorToString(result), duration);
+                asyncpluginstarter->Release();
+                asyncpluginstarter = nullptr;
+
+                currentRetry++;
+                // Sleep, then try again
+                SleepMs(retryDelayMs);
+            }
+            else {
+                switch (result) {
+                    case Core::ERROR_INPROGRESS :
+                        LOG_ERROR(_pluginName.c_str(), "Activate plugin request failed, activation request already being handled (from other PluginActivator?), error code %u (%s) after %ldms", result, Core::ErrorToString(result), duration);
+                        break;
+                    case Core::ERROR_ILLEGAL_STATE:
+                        LOG_ERROR(_pluginName.c_str(), "Activate plugin request failed, plugin is in an invalid state to be started, error code %u (%s) after %ldms", result, Core::ErrorToString(result), duration);
+                        break;
+                    case Core::ERROR_NOT_EXIST:
+                        LOG_ERROR(_pluginName.c_str(), "Activate plugin request failed, plugin is unknown to Thunder, error code %u (%s) after %ldms", result, Core::ErrorToString(result), duration);
+                        break;
+                    default:
+                        LOG_ERROR(_pluginName.c_str(), "Activate plugin request failed for unexpected reason, error code %u (%s) after %ldms", result, Core::ErrorToString(result), duration);
+                        break;
+                }
+                // for the above does not make sense to try again...
+                asyncpluginstarter->Release();
+                asyncpluginstarter = nullptr;
+                break;
+            }
+
+#if 0
             if (result != Core::ERROR_NONE) {
                 if (result == Core::ERROR_PENDING_CONDITIONS) {
                     // Ideally we'd print out which preconditions are un-met for debugging, but that data is not exposed through the IShell interface
@@ -91,6 +136,7 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
                 success = true;
             }
             lifetime->Release();
+#endif
         }
     }
 

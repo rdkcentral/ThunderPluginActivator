@@ -20,6 +20,8 @@
 #pragma once
 #include "Module.h"
 
+#include <interfaces/IPluginAsyncStateControl.h>
+
 #include "IPluginStarter.h"
 
 using namespace Thunder;
@@ -37,7 +39,28 @@ public:
     bool activatePlugin(const uint8_t maxRetries, const uint16_t retryDelayMs) override;
 
 private:
-    using ControllerConnector = RPC::SmartControllerInterfaceType<Exchange::Controller::ILifeTime>;
+    using ControllerConnector = RPC::SmartControllerInterfaceType<Exchange::Controller::ILifeTime>; 
+
+    class PluginActivatorCallback : public Exchange::IPluginAsyncStateControl::IActivationCallback {
+    public:
+        PluginActivatorCallback() = default;
+        ~PluginActivatorCallback() override = default;
+
+        PluginActivatorCallback(const PluginActivatorCallback&) = delete;
+        PluginActivatorCallback& operator=(const PluginActivatorCallback&) = delete;
+        PluginActivatorCallback (PluginActivatorCallback&&) = delete;
+        PluginActivatorCallback& operator=(PluginActivatorCallback&&) = delete;
+
+        void Finished(const string& callsign, const state state, const uint8_t numberofretries) override 
+        {
+
+        }
+
+        BEGIN_INTERFACE_MAP(PluginActivatorCallback)
+        INTERFACE_ENTRY(Exchange::IPluginAsyncStateControl::IActivationCallback)
+        END_INTERFACE_MAP
+
+    };
 
 private:
     ControllerConnector _connector;
