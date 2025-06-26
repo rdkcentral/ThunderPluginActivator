@@ -24,6 +24,8 @@
 
 #include "IPluginStarter.h"
 
+#include <future>
+
 using namespace Thunder;
 
 /**
@@ -36,14 +38,14 @@ public:
     explicit COMRPCStarter(const string& pluginName);
     ~COMRPCStarter() override = default;
 
-    bool activatePlugin(const uint8_t maxRetries, const uint16_t retryDelayMs) override;
+    bool activatePlugin(const uint8_t maxRetries, const uint16_t retryDelayMs, const string& pluginActivatorCallsign) override;
 
 private:
     using ControllerConnector = RPC::SmartControllerInterfaceType<Exchange::Controller::ILifeTime>; 
 
     class PluginActivatorCallback : public Exchange::IPluginAsyncStateControl::IActivationCallback {
     public:
-        PluginActivatorCallback() = default;
+        PluginActivatorCallback(std::promise<bool>&& resultpromise) : _resultpromise(std::move(resultpromise)) {}
         ~PluginActivatorCallback() override = default;
 
         PluginActivatorCallback(const PluginActivatorCallback&) = delete;
@@ -51,18 +53,18 @@ private:
         PluginActivatorCallback (PluginActivatorCallback&&) = delete;
         PluginActivatorCallback& operator=(PluginActivatorCallback&&) = delete;
 
-        void Finished(const string& callsign, const state state, const uint8_t numberofretries) override 
-        {
-
-        }
-
         BEGIN_INTERFACE_MAP(PluginActivatorCallback)
         INTERFACE_ENTRY(Exchange::IPluginAsyncStateControl::IActivationCallback)
         END_INTERFACE_MAP
 
+        void Finished(const string& callsign, const Exchange::IPluginAsyncStateControl::IActivationCallback::state state, const uint8_t numberofretries) override;
+
+    private:
+        std::promise<bool> _resultpromise;
     };
 
 private:
     ControllerConnector _connector;
     const string _pluginName;
+    const uint32_t _timeoutvalue;
 };
