@@ -64,7 +64,7 @@ private:
     };
 
 private:
+    const uint32_t _timeoutvalue; // note order is important here
     ControllerConnector _connector;
     const string _pluginName;
-    const uint32_t _timeoutvalue;
 };

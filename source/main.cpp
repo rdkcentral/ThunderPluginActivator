@@ -160,6 +160,5 @@ int main(int argc, char* argv[])
     }
 
     Core::Singleton::Dispose();
-    Thunder::RPC::DestroyDefaultInvokeServer();
     return success ? EXIT_SUCCESS : EXIT_FAILURE;
 }
