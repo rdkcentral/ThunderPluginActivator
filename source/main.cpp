@@ -152,11 +152,61 @@ int main(int argc, char* argv[])
 
         // For now, we only implement the starter in COM-RPC but could do a JSON-RPC version
         // in the future
+#if 0
         {
             auto starter = std::unique_ptr<IPluginStarter>(new COMRPCStarter(gPluginName));
             success = starter->activatePlugin(gRetryCount, gRetryDelayMs, gPluginActivatorCallsign);
         }
 
+    }
+#endif
+
+    std::thread t1([]() {
+        auto starter = std::unique_ptr<IPluginStarter>(new COMRPCStarter("Dictionary"));
+        starter->activatePlugin(gRetryCount, gRetryDelayMs, gPluginActivatorCallsign);
+        });
+    std::thread t2([]() {
+        auto starter = std::unique_ptr<IPluginStarter>(new COMRPCStarter("Dictionary1"));
+        starter->activatePlugin(gRetryCount, gRetryDelayMs, gPluginActivatorCallsign);
+        });
+    std::thread t3([]() {
+        auto starter = std::unique_ptr<IPluginStarter>(new COMRPCStarter("Dictionary2"));
+        starter->activatePlugin(gRetryCount, gRetryDelayMs, gPluginActivatorCallsign);
+        });
+    std::thread t4([]() {
+        auto starter = std::unique_ptr<IPluginStarter>(new COMRPCStarter("Dictionary3"));
+        starter->activatePlugin(gRetryCount, gRetryDelayMs, gPluginActivatorCallsign);
+        });
+    std::thread t5([]() {
+        auto starter = std::unique_ptr<IPluginStarter>(new COMRPCStarter("Dictionary4"));
+        starter->activatePlugin(gRetryCount, gRetryDelayMs, gPluginActivatorCallsign);
+        });
+    std::thread t6([]() {
+        auto starter = std::unique_ptr<IPluginStarter>(new COMRPCStarter("Dictionary5"));
+        starter->activatePlugin(gRetryCount, gRetryDelayMs, gPluginActivatorCallsign);
+        });
+    std::thread t7([]() {
+        auto starter = std::unique_ptr<IPluginStarter>(new COMRPCStarter("Dictionary6"));
+        starter->activatePlugin(gRetryCount, gRetryDelayMs, gPluginActivatorCallsign);
+        });
+    std::thread t8([]() {
+        auto starter = std::unique_ptr<IPluginStarter>(new COMRPCStarter("Dictionary7"));
+        starter->activatePlugin(gRetryCount, gRetryDelayMs, gPluginActivatorCallsign);
+        });
+    std::thread t9([]() {
+        auto starter = std::unique_ptr<IPluginStarter>(new COMRPCStarter("Dictionary8"));
+        starter->activatePlugin(gRetryCount, gRetryDelayMs, gPluginActivatorCallsign);
+        });
+
+    t1.join();
+    t2.join();
+    t3.join();
+    t4.join();
+    t5.join();
+    t6.join();
+    t7.join();
+    t8.join();
+    t9.join();
     }
 
     Core::Singleton::Dispose();
