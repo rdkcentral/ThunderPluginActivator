@@ -27,7 +27,7 @@
 void COMRPCStarter::PluginActivatorCallback::Finished(const string& callsign, const Exchange::IPluginAsyncStateControl::IActivationCallback::state state, const uint8_t numberofretries) 
 {
     LOG_INF(callsign.c_str(), "Plugin activation async result received %u, retries %u", state, numberofretries);
-    _resultpromise.set_value(state == Exchange::IPluginAsyncStateControl::IActivationCallback::state::SUCCESS);
+    _resultpromise.set_value(state);
 }
 
 COMRPCStarter::COMRPCStarter(const string& pluginName)
@@ -87,8 +87,8 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
             // Sleep, then try again
             SleepMs(retryDelayMs);
         } else {
-            std::promise<bool> pluginActivateAsyncResultPromise;
-            std::future<bool> pluginActivateAsyncResultFuture = pluginActivateAsyncResultPromise.get_future();
+            PluginActivatorCallback::PluginActivatorPromise pluginActivateAsyncResultPromise;
+            std::future<Exchange::IPluginAsyncStateControl::IActivationCallback::state> pluginActivateAsyncResultFuture = pluginActivateAsyncResultPromise.get_future();
             Core::SinkType<PluginActivatorCallback> sink(std::move(pluginActivateAsyncResultPromise));
             Core::OptionalType<uint8_t> retries(maxRetries - currentRetry);
             Core::OptionalType<uint16_t> delay(retryDelayMs);
@@ -98,7 +98,8 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
             if (result == Core::ERROR_NONE) {
                 LOG_INF(_pluginName.c_str(), "Plugin activation async request sent, waiting for result");
 
-                success = pluginActivateAsyncResultFuture.get();
+                Exchange::IPluginAsyncStateControl::IActivationCallback::state resultState = pluginActivateAsyncResultFuture.get();
+                success = (resultState == Exchange::IPluginAsyncStateControl::IActivationCallback::state::SUCCESS);
 
                 auto duration = stopwatch.Elapsed() / Core::Time::TicksPerMillisecond;
 
@@ -108,7 +109,12 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
                     retry = false;
                 }
                 else {
-                    LOG_ERROR(_pluginName.c_str(), "Failed to activate plugin after %ldms", duration);
+                    if (resultState == Exchange::IPluginAsyncStateControl::IActivationCallback::state::FAILURE) {
+                        LOG_ERROR(_pluginName.c_str(), "Failed to activate plugin after %ldms", duration);
+                    }
+                    else {
+                        LOG_ERROR(_pluginName.c_str(), "Activate of plugin aborted (explicitely or implicetely, e.g. due to IPluginAsyncStateControl plugin shutdown) after %ldms", duration);
+                    }
                     retry = false; // do not retry, that is what the IPluginAsyncStateControl already did...
                 }
             }
@@ -146,7 +152,7 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
     }
 
     if (!success) {
-        LOG_ERROR(_pluginName.c_str(), "Max retries hit - giving up activating the plugin");
+        LOG_ERROR(_pluginName.c_str(), "Max retries hit or startup aborted - giving up activating the plugin");
     }
 
     if (_connector.IsOperational() == true) {

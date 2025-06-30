@@ -45,7 +45,9 @@ private:
 
     class PluginActivatorCallback : public Exchange::IPluginAsyncStateControl::IActivationCallback {
     public:
-        PluginActivatorCallback(std::promise<bool>&& resultpromise) : _resultpromise(std::move(resultpromise)) {}
+        using PluginActivatorPromise = std::promise<Exchange::IPluginAsyncStateControl::IActivationCallback::state>;
+
+        PluginActivatorCallback(PluginActivatorPromise&& resultpromise) : _resultpromise(std::move(resultpromise)) {}
         ~PluginActivatorCallback() override = default;
 
         PluginActivatorCallback(const PluginActivatorCallback&) = delete;
@@ -60,7 +62,7 @@ private:
         void Finished(const string& callsign, const Exchange::IPluginAsyncStateControl::IActivationCallback::state state, const uint8_t numberofretries) override;
 
     private:
-        std::promise<bool> _resultpromise;
+        PluginActivatorPromise _resultpromise;
     };
 
 private:
