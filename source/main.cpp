@@ -161,11 +161,11 @@ int main(int argc, char* argv[])
     }
 #endif
 
+
     std::thread t1([]() {
         auto starter = std::unique_ptr<IPluginStarter>(new COMRPCStarter("Dictionary"));
         starter->activatePlugin(gRetryCount, gRetryDelayMs, gPluginActivatorCallsign);
         });
-#if 0
     std::thread t2([]() {
         auto starter = std::unique_ptr<IPluginStarter>(new COMRPCStarter("Dictionary1"));
         starter->activatePlugin(gRetryCount, gRetryDelayMs, gPluginActivatorCallsign);
@@ -198,9 +198,10 @@ int main(int argc, char* argv[])
         auto starter = std::unique_ptr<IPluginStarter>(new COMRPCStarter("Dictionary8"));
         starter->activatePlugin(gRetryCount, gRetryDelayMs, gPluginActivatorCallsign);
         });
-#endif
+
     t1.join();
-#if 0
+
+
     t2.join();
     t3.join();
     t4.join();
@@ -209,7 +210,7 @@ int main(int argc, char* argv[])
     t7.join();
     t8.join();
     t9.join();
-#endif
+
     }
 
     Core::Singleton::Dispose();

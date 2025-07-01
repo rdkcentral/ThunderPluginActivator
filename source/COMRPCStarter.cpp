@@ -88,8 +88,7 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
             SleepMs(retryDelayMs);
         } else {
             PluginActivatorCallback::PluginActivatorPromise pluginActivateAsyncResultPromise;
-            std::future<Exchange::IPluginAsyncStateControl::IActivationCallback::state> pluginActivateAsyncResultFuture = pluginActivateAsyncResultPromise.get_future();
-            Core::SinkType<PluginActivatorCallback> sink(std::move(pluginActivateAsyncResultPromise));
+            std::future<Exchange::IPluginAsyncStateControl::IActivationCallback::state> pluginActivateAsyncResultFuture = pluginActivateAsyncResultPromise.get_future();            Core::SinkType<PluginActivatorCallback> sink(std::move(pluginActivateAsyncResultPromise));
             Core::OptionalType<uint8_t> retries(maxRetries - currentRetry);
             Core::OptionalType<uint16_t> delay(retryDelayMs);
 
@@ -97,9 +96,16 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
 
             if (result == Core::ERROR_NONE) {
                 LOG_INF(_pluginName.c_str(), "Plugin activation async request sent, waiting for result");
+                /*
+                std::thread t1([&]() {
+                    SleepMs(1000);
+                    asyncpluginstarter->AbortActivate(_pluginName);
+                    }); */
 
                 Exchange::IPluginAsyncStateControl::IActivationCallback::state resultState = pluginActivateAsyncResultFuture.get();
                 success = (resultState == Exchange::IPluginAsyncStateControl::IActivationCallback::state::SUCCESS);
+
+                //t1.join();
 
                 auto duration = stopwatch.Elapsed() / Core::Time::TicksPerMillisecond;
 
