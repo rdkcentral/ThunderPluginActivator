@@ -23,10 +23,11 @@
 
 #include <chrono>
 #include <thread>
+#include <inttypes.h>
 
 void COMRPCStarter::PluginActivatorCallback::Finished(const string& callsign, const Exchange::IPluginAsyncStateControl::IActivationCallback::state state, const uint8_t numberofretries) 
 {
-    LOG_INF(callsign.c_str(), "Plugin activation async result received %u, retries %u", state, numberofretries);
+    LOG_INF(callsign.c_str(), "Plugin activation async result received %u, retries %u", static_cast<uint8_t>(state), numberofretries);
     _resultpromise.set_value(state);
 }
 
@@ -106,22 +107,22 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
 
                 if (success == true) {
                     // Our work here is done!
-                    LOG_INF(_pluginName.c_str(), "Successfully activated plugin after %ldms", duration);
+                    LOG_INF(_pluginName.c_str(), "Successfully activated plugin after %" PRIu64 "ms", duration);
                     retry = false;
                 }
                 else {
                     if (resultState == Exchange::IPluginAsyncStateControl::IActivationCallback::state::FAILURE) {
-                        LOG_ERROR(_pluginName.c_str(), "Failed to activate plugin after %ldms", duration);
+                        LOG_ERROR(_pluginName.c_str(), "Failed to activate plugin after %" PRIu64 "ms", duration);
                     }
                     else {
-                        LOG_ERROR(_pluginName.c_str(), "Activate of plugin aborted (explicitely or implicetely, e.g. due to IPluginAsyncStateControl plugin shutdown) after %ldms", duration);
+                        LOG_ERROR(_pluginName.c_str(), "Activate of plugin aborted (explicitely or implicetely, e.g. due to IPluginAsyncStateControl plugin shutdown) after %" PRIu64 "ms", duration);
                     }
                     retry = false; // do not retry, that is what the IPluginAsyncStateControl already did...
                 }
             }
             else if((result & COM_ERROR) != 0) { // we have a COM error, let's retry, connection might be down
                 auto duration = stopwatch.Elapsed() / Core::Time::TicksPerMillisecond;
-                LOG_ERROR(_pluginName.c_str(), "Failed to send activate plugin request, COM error code %u (%s) after %ldms", result, Core::ErrorToString(result), duration);
+                LOG_ERROR(_pluginName.c_str(), "Failed to send activate plugin request, COM error code %u (%s) after %" PRIu64 "ms", result, Core::ErrorToString(result), duration);
 
                 currentRetry++;
                 // Sleep, then try again
@@ -131,16 +132,16 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
                 auto duration = stopwatch.Elapsed() / Core::Time::TicksPerMillisecond;
                 switch (result) {
                     case Core::ERROR_INPROGRESS :
-                        LOG_ERROR(_pluginName.c_str(), "Activate plugin request failed, activation request already being handled (from other PluginActivator?), error code %u (%s) after %ldms", result, Core::ErrorToString(result), duration);
+                        LOG_ERROR(_pluginName.c_str(), "Activate plugin request failed, activation request already being handled (from other PluginActivator?), error code %u (%s) after %" PRIu64 "ms", result, Core::ErrorToString(result), duration);
                         break;
                     case Core::ERROR_ILLEGAL_STATE:
-                        LOG_ERROR(_pluginName.c_str(), "Activate plugin request failed, plugin is in an invalid state to be started, error code %u (%s) after %ldms", result, Core::ErrorToString(result), duration);
+                        LOG_ERROR(_pluginName.c_str(), "Activate plugin request failed, plugin is in an invalid state to be started, error code %u (%s) after %" PRIu64 "ms", result, Core::ErrorToString(result), duration);
                         break;
                     case Core::ERROR_NOT_EXIST:
-                        LOG_ERROR(_pluginName.c_str(), "Activate plugin request failed, plugin is unknown to Thunder, error code %u (%s) after %ldms", result, Core::ErrorToString(result), duration);
+                        LOG_ERROR(_pluginName.c_str(), "Activate plugin request failed, plugin is unknown to Thunder, error code %u (%s) after %" PRIu64 "ms", result, Core::ErrorToString(result), duration);
                         break;
                     default:
-                        LOG_ERROR(_pluginName.c_str(), "Activate plugin request failed for unexpected reason, error code %u (%s) after %ldms", result, Core::ErrorToString(result), duration);
+                        LOG_ERROR(_pluginName.c_str(), "Activate plugin request failed for unexpected reason, error code %u (%s) after %" PRIu64 "ms", result, Core::ErrorToString(result), duration);
                         break;
                 }
                 // for the above does not make sense to try again...

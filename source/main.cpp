@@ -95,7 +95,7 @@ static bool parseArgs(const int argc, char** argv)
                     }
                     break;
                 case 'p':
-                    gpluginactivatorcallsign = optarg;
+                    gPluginActivatorCallsign = optarg;
                     break;
                 case 'v':
                    if (gLogLevel < LEVEL_DEBUG) {
