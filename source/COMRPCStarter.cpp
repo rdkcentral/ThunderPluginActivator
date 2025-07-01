@@ -24,82 +24,140 @@
 #include <chrono>
 #include <thread>
 
+void COMRPCStarter::PluginActivatorCallback::Finished(const string& callsign, const Exchange::IPluginAsyncStateControl::IActivationCallback::state state, const uint8_t numberofretries) 
+{
+    LOG_INF(callsign.c_str(), "Plugin activation async result received %u, retries %u", state, numberofretries);
+    _resultpromise.set_value(state);
+}
+
 COMRPCStarter::COMRPCStarter(const string& pluginName)
     : IPluginStarter()
-    , _connector()
+#ifdef __DEBUG__
+    , _timeoutvalue(1000) // also for debug you don't want this to be forever
+#else
+    , _timeoutvalue(RPC::CommunicationTimeOut)
+#endif
+    , _connector(_timeoutvalue)
     , _pluginName(pluginName)
-{
+{  
 }
 
 /**
  * @brief Attempt to activate the plugin and automatically retry on failure
  *
- * @param[in]   maxRetries      Maximum amount of times to retry activation if it fails
- * @param[in]   retryDelayMs    Delay in ms between retry attempts
+ * @param[in]   maxRetries                  Maximum amount of times to retry activation if it fails
+ * @param[in]   retryDelayMs                Delay in ms between retry attempts
+ * @param[in]   pluginActivatorCallsign     Callsign of the plugin that implements IPluginAsyncStateControl and will be used for requests
  *
- * @return True if plugin successfully activated, false if failed to activate
+ * @return True if plugin successfully activated, false if failed to activate (or was aborted)
  */
-bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retryDelayMs)
+
+bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retryDelayMs, const string& pluginActivatorCallsign)
 {
     // Attempt to open the plugin shell
     bool success = false;
-    int currentRetry = 1;
+    bool retry = true;
+    int currentRetry = 0;
 
-    while (!success && currentRetry <= maxRetries) {
+    while ((retry == true) && (currentRetry <= maxRetries)) { // first attempt not included, that is not a retry...
         LOG_INF(_pluginName.c_str(), "Attempting to activate plugin - attempt %d/%d", currentRetry, maxRetries);
 
         Core::StopWatch stopwatch;
 
         if (_connector.IsOperational() == false) {
-            uint32_t result = _connector.Open(RPC::CommunicationTimeOut, ControllerConnector::Connector());
+            uint32_t result = _connector.Open(_timeoutvalue, ControllerConnector::Connector());
             if (result != Core::ERROR_NONE) {
                 LOG_ERROR(_pluginName.c_str(), "Failed to get controller interface, error %u (%s)", result, Core::ErrorToString(result));
+                // Sleep, then try again
+                currentRetry++;
+                SleepMs(retryDelayMs);
+                continue;
             }
         }
 
-        Exchange::Controller::ILifeTime* lifetime = _connector.Interface();
+        PluginHost::IShell* controller = _connector.ControllerInterface();
+        ASSERT(controller != nullptr);
+        Exchange::IPluginAsyncStateControl* asyncpluginstarter = controller->QueryInterfaceByCallsign<Exchange::IPluginAsyncStateControl>(pluginActivatorCallsign);
+        controller->Release();
+        controller = nullptr;
 
-        if (lifetime == nullptr) {
-            LOG_ERROR(_pluginName.c_str(), "Failed to open ILifeTime interface, will retry after %dms", retryDelayMs);
+        if (asyncpluginstarter == nullptr) {
+            LOG_ERROR(_pluginName.c_str(), "Failed to get IPluginAsyncStateControl interface, will retry after %dms", retryDelayMs);
             currentRetry++;
-
-            _connector.Close(RPC::CommunicationTimeOut);
 
             // Sleep, then try again
             SleepMs(retryDelayMs);
         } else {
-            // Will block until plugin is activated
-            Core::hresult result = lifetime->Activate(_pluginName.c_str());
+            PluginActivatorCallback::PluginActivatorPromise pluginActivateAsyncResultPromise;
+            std::future<Exchange::IPluginAsyncStateControl::IActivationCallback::state> pluginActivateAsyncResultFuture = pluginActivateAsyncResultPromise.get_future();       
+            Core::SinkType<PluginActivatorCallback> sink(std::move(pluginActivateAsyncResultPromise));
+            Core::OptionalType<uint8_t> retries(maxRetries - currentRetry);
+            Core::OptionalType<uint16_t> delay(retryDelayMs);
 
-            auto duration = stopwatch.Elapsed() / Core::Time::TicksPerMillisecond;
+            Core::hresult result = asyncpluginstarter->Activate(_pluginName, retries, delay, &sink);
 
-            if (result != Core::ERROR_NONE) {
-                if (result == Core::ERROR_PENDING_CONDITIONS) {
-                    // Ideally we'd print out which preconditions are un-met for debugging, but that data is not exposed through the IShell interface
-                    LOG_ERROR(_pluginName.c_str(), "Failed to activate plugin due to unmet preconditions after %ldms", duration);
-                } else {
-                    LOG_ERROR(_pluginName.c_str(), "Failed to activate plugin with error %u (%s) after %ldms (COM-RPC link error: %s)", result, Core::ErrorToString(result), duration, result & COM_ERROR ? "true" : "false");
+            if (result == Core::ERROR_NONE) {
+                LOG_INF(_pluginName.c_str(), "Plugin activation async request sent, waiting for result");
+
+                Exchange::IPluginAsyncStateControl::IActivationCallback::state resultState = pluginActivateAsyncResultFuture.get();
+                success = (resultState == Exchange::IPluginAsyncStateControl::IActivationCallback::state::SUCCESS);
+
+                auto duration = stopwatch.Elapsed() / Core::Time::TicksPerMillisecond;
+
+                if (success == true) {
+                    // Our work here is done!
+                    LOG_INF(_pluginName.c_str(), "Successfully activated plugin after %ldms", duration);
+                    retry = false;
                 }
-
-                // Try activation again up until the max number of retries
-                currentRetry++;
-                LOG_DBG(_pluginName.c_str(), "Will retry activation again in %dms", retryDelayMs);
-                SleepMs(retryDelayMs);
-            } else {
-                // Our work here is done!
-                LOG_INF(_pluginName.c_str(), "Successfully activated plugin after %ldms", duration);
-                success = true;
+                else {
+                    if (resultState == Exchange::IPluginAsyncStateControl::IActivationCallback::state::FAILURE) {
+                        LOG_ERROR(_pluginName.c_str(), "Failed to activate plugin after %ldms", duration);
+                    }
+                    else {
+                        LOG_ERROR(_pluginName.c_str(), "Activate of plugin aborted (explicitely or implicetely, e.g. due to IPluginAsyncStateControl plugin shutdown) after %ldms", duration);
+                    }
+                    retry = false; // do not retry, that is what the IPluginAsyncStateControl already did...
+                }
             }
-            lifetime->Release();
+            else if((result & COM_ERROR) != 0) { // we have a COM error, let's retry, connection might be down
+                auto duration = stopwatch.Elapsed() / Core::Time::TicksPerMillisecond;
+                LOG_ERROR(_pluginName.c_str(), "Failed to send activate plugin request, COM error code %u (%s) after %ldms", result, Core::ErrorToString(result), duration);
+
+                currentRetry++;
+                // Sleep, then try again
+                SleepMs(retryDelayMs);
+            }
+            else {
+                auto duration = stopwatch.Elapsed() / Core::Time::TicksPerMillisecond;
+                switch (result) {
+                    case Core::ERROR_INPROGRESS :
+                        LOG_ERROR(_pluginName.c_str(), "Activate plugin request failed, activation request already being handled (from other PluginActivator?), error code %u (%s) after %ldms", result, Core::ErrorToString(result), duration);
+                        break;
+                    case Core::ERROR_ILLEGAL_STATE:
+                        LOG_ERROR(_pluginName.c_str(), "Activate plugin request failed, plugin is in an invalid state to be started, error code %u (%s) after %ldms", result, Core::ErrorToString(result), duration);
+                        break;
+                    case Core::ERROR_NOT_EXIST:
+                        LOG_ERROR(_pluginName.c_str(), "Activate plugin request failed, plugin is unknown to Thunder, error code %u (%s) after %ldms", result, Core::ErrorToString(result), duration);
+                        break;
+                    default:
+                        LOG_ERROR(_pluginName.c_str(), "Activate plugin request failed for unexpected reason, error code %u (%s) after %ldms", result, Core::ErrorToString(result), duration);
+                        break;
+                }
+                // for the above does not make sense to try again...
+                retry = false;
+            }
+
+            asyncpluginstarter->Release();
+            asyncpluginstarter = nullptr;
         }
     }
 
     if (!success) {
-        LOG_ERROR(_pluginName.c_str(), "Max retries hit - giving up activating the plugin");
+        LOG_ERROR(_pluginName.c_str(), "Max retries hit or startup aborted - giving up activating the plugin");
     }
 
     if (_connector.IsOperational() == true) {
-        _connector.Close(RPC::CommunicationTimeOut);
+        _connector.Close(_timeoutvalue);
     }
 
     return success;

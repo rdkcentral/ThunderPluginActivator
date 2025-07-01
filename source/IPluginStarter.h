@@ -35,9 +35,12 @@ public:
      *
      * Will block until either the Thunder plugin has activated or until the maximum amount of retires has occurred
      *
-     * @param[in]   maxRetries          Maximum amount of attempts to activate the plugin - if plugin is not activated within the amount of retries
-     *                                  this method will return false
-     * @param[in]   retryDelayMs        Amount of time to wait after a failed activation before retrying again
+     * @param[in]   maxRetries                  Maximum amount of attempts to activate the plugin - if plugin is not activated within the amount of retries
+     *                                          this method will return false
+     * 
+     * @param[in]   retryDelayMs                Amount of time to wait after a failed activation before retrying again
+     * 
+     * @param[in]   pluginActivatorCallsign     Callsign of the plugin that implements IPluginAsyncStateControl and will be used for requests
      */
-    virtual bool activatePlugin(const uint8_t maxRetries, const uint16_t retryDelayMs) = 0;
+    virtual bool activatePlugin(const uint8_t maxRetries, const uint16_t retryDelayMs, const string& pluginActivatorCallsign) = 0;
 };

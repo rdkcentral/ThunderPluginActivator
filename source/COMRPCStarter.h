@@ -20,9 +20,13 @@
 #pragma once
 #include "Module.h"
 
+#include <interfaces/IPluginAsyncStateControl.h>
+
 #include "IPluginStarter.h"
 
-using namespace WPEFramework;
+#include <future>
+
+using namespace Thunder;
 
 /**
  * @brief COM-RPC implementation of a plugin starter
@@ -34,12 +38,35 @@ public:
     explicit COMRPCStarter(const string& pluginName);
     ~COMRPCStarter() override = default;
 
-    bool activatePlugin(const uint8_t maxRetries, const uint16_t retryDelayMs) override;
+    bool activatePlugin(const uint8_t maxRetries, const uint16_t retryDelayMs, const string& pluginActivatorCallsign) override;
 
 private:
-    using ControllerConnector = RPC::SmartControllerInterfaceType<Exchange::Controller::ILifeTime>;
+    using ControllerConnector = RPC::SmartControllerInterfaceType<Exchange::Controller::ILifeTime>; 
+
+    class PluginActivatorCallback : public Exchange::IPluginAsyncStateControl::IActivationCallback {
+    public:
+        using PluginActivatorPromise = std::promise<Exchange::IPluginAsyncStateControl::IActivationCallback::state>;
+
+        explicit PluginActivatorCallback(PluginActivatorPromise&& resultpromise) : _resultpromise(std::move(resultpromise)) {}
+        ~PluginActivatorCallback() override = default;
+
+        PluginActivatorCallback(const PluginActivatorCallback&) = delete;
+        PluginActivatorCallback& operator=(const PluginActivatorCallback&) = delete;
+        PluginActivatorCallback (PluginActivatorCallback&&) = delete;
+        PluginActivatorCallback& operator=(PluginActivatorCallback&&) = delete;
+
+        BEGIN_INTERFACE_MAP(PluginActivatorCallback)
+        INTERFACE_ENTRY(Exchange::IPluginAsyncStateControl::IActivationCallback)
+        END_INTERFACE_MAP
+
+        void Finished(const string& callsign, const Exchange::IPluginAsyncStateControl::IActivationCallback::state state, const uint8_t numberofretries) override;
+
+    private:
+        PluginActivatorPromise _resultpromise;
+    };
 
 private:
+    const uint32_t _timeoutvalue; // note order is important here
     ControllerConnector _connector;
     const string _pluginName;
 };
