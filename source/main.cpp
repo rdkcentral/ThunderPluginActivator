@@ -136,7 +136,6 @@ static bool parseArgs(const int argc, char** argv)
 
             */
 
-        // huppel to remove
         gPluginName = argv[1];
     }
 
