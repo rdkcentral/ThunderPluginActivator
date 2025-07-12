@@ -115,7 +115,7 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
                         LOG_ERROR(_pluginName.c_str(), "Failed to activate plugin after %" PRIu64 "ms", duration);
                     }
                     else {
-                        LOG_ERROR(_pluginName.c_str(), "Activate of plugin aborted (explicitely or implicetely, e.g. due to IPluginAsyncStateControl plugin shutdown) after %" PRIu64 "ms", duration);
+                        LOG_ERROR(_pluginName.c_str(), "Activate of plugin aborted (explicitly or implicitly, e.g. due to IPluginAsyncStateControl plugin shutdown) after %" PRIu64 "ms", duration);
                     }
                     retry = false; // do not retry, that is what the IPluginAsyncStateControl already did...
                 }
