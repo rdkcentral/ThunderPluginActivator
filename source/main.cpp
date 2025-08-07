@@ -118,19 +118,19 @@ static bool parseArgs(const int argc, char** argv)
                 }
             }
 
-            if ((success == true) && (optind == argc)) {
-                fprintf(stderr, "Error: Must provide plugin name to activate\n");
-                success = false;
-            } else {
+            if (success == true) {
+                if(optind == argc) {
+                    fprintf(stderr, "Error: Must provide plugin name to activate\n");
+                    success = false;
+                } else {
 
-                gPluginName = argv[optind];
+                    gPluginName = argv[optind];
 
-                optind++;
-                for (int i = optind; i < argc; i++) {
-                    printf("Warning: Non-option argument %s ignored\n", argv[i]);
+                    optind++;
+                    for (int i = optind; i < argc; i++) {
+                        printf("Warning: Non-option argument %s ignored\n", argv[i]);
+                    }
                 }
-
-                success = true;
             }
     }
 
