@@ -119,6 +119,8 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
                     }
                     retry = false; // do not retry, that is what the IPluginAsyncStateControl already did...
                 }
+
+                sink.WaitReleased(RPC::CommunicationTimeOut);
             }
             else if((result & COM_ERROR) != 0) { // we have a COM error, let's retry, connection might be down
                 auto duration = stopwatch.Elapsed() / Core::Time::TicksPerMillisecond;
