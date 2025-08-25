@@ -48,7 +48,7 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
     while (!success && currentRetry <= maxRetries) {
         LOG_INF(_pluginName.c_str(), "Attempting to activate plugin - attempt %d/%d", currentRetry, maxRetries);
 
-        Core::StopWatch stopwatch;
+        auto start = Core::Time::Now();
 
         if (_connector.IsOperational() == false) {
             uint32_t result = _connector.Open(RPC::CommunicationTimeOut, ControllerConnector::Connector());
@@ -66,28 +66,27 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
             _connector.Close(RPC::CommunicationTimeOut);
 
             // Sleep, then try again
-            SleepMs(retryDelayMs);
+            std::this_thread::sleep_for(std::chrono::milliseconds(retryDelayMs));
         } else {
             // Will block until plugin is activated
             Core::hresult result = lifetime->Activate(_pluginName.c_str());
 
-            auto duration = stopwatch.Elapsed() / Core::Time::TicksPerMillisecond;
+            auto duration = Core::Time::Now().Sub(start.MilliSeconds());
 
             if (result != Core::ERROR_NONE) {
                 if (result == Core::ERROR_PENDING_CONDITIONS) {
                     // Ideally we'd print out which preconditions are un-met for debugging, but that data is not exposed through the IShell interface
-                    LOG_ERROR(_pluginName.c_str(), "Failed to activate plugin due to unmet preconditions after %ldms", duration);
+                    LOG_ERROR(_pluginName.c_str(), "Failed to activate plugin due to unmet preconditions after %dms", duration.MilliSeconds());
                 } else {
-                    LOG_ERROR(_pluginName.c_str(), "Failed to activate plugin with error %u (%s) after %ldms (COM-RPC link error: %s)", result, Core::ErrorToString(result), duration, result & COM_ERROR ? "true" : "false");
+                    LOG_ERROR(_pluginName.c_str(), "Failed to activate plugin with error %u (%s) after %dms", result, Core::ErrorToString(result), duration.MilliSeconds());
                 }
 
                 // Try activation again up until the max number of retries
                 currentRetry++;
-                LOG_DBG(_pluginName.c_str(), "Will retry activation again in %dms", retryDelayMs);
-                SleepMs(retryDelayMs);
+                std::this_thread::sleep_for(std::chrono::milliseconds(retryDelayMs));
             } else {
                 // Our work here is done!
-                LOG_INF(_pluginName.c_str(), "Successfully activated plugin after %ldms", duration);
+                LOG_INF(_pluginName.c_str(), "Successfully activated plugin after %dms", duration.MilliSeconds());
                 success = true;
             }
             lifetime->Release();

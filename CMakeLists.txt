@@ -43,11 +43,6 @@ target_link_libraries(PluginActivator
     CompileSettingsDebug::CompileSettingsDebug
 )
 
-target_compile_options(PluginActivator
-    PRIVATE
-    -Wall -Wextra -Werror
-)
-
 install(
     TARGETS PluginActivator
     RUNTIME DESTINATION bin
