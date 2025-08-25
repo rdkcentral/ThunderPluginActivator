@@ -28,6 +28,8 @@ static int gRetryDelayMs = 500;
 static string gPluginName;
 static int gLogLevel = LEVEL_INFO;
 
+static bool gDeactivate = false;
+
 /**
  * @brief Display a help message for the tool
  */
@@ -39,6 +41,7 @@ static void displayUsage()
     printf("    -r, --retries       Maximum amount of retries to attempt to start the plugin before giving up\n");
     printf("    -d, --delay         Delay (in ms) between each attempt to start the plugin if it fails\n");
     printf("    -v, --verbose       Increase log level\n");
+    printf("    -x, --deactivate    Deactivate the plugin instead of activating\n");
     printf("\n");
     printf("    [callsign]          Callsign of the plugin to activate (Required)\n");
 }
@@ -61,6 +64,7 @@ static void parseArgs(const int argc, char** argv)
         { "retries", required_argument, nullptr, (int)'r' },
         { "delay", required_argument, nullptr, (int)'d' },
         { "verbose", no_argument, nullptr, (int)'v' },
+        { "deactivate", no_argument, nullptr, (int)'x' },
         { nullptr, 0, nullptr, 0 }
     };
 
@@ -69,7 +73,7 @@ static void parseArgs(const int argc, char** argv)
     int option;
     int longindex;
 
-    while ((option = getopt_long(argc, argv, "hr:d:v", longopts, &longindex)) != -1) {
+    while ((option = getopt_long(argc, argv, "hr:d:v:x", longopts, &longindex)) != -1) {
         switch (option) {
         case 'h':
             displayUsage();
@@ -93,6 +97,9 @@ static void parseArgs(const int argc, char** argv)
             if (gLogLevel < LEVEL_DEBUG) {
                 gLogLevel++;
             }
+            break;
+        case 'x':
+            gDeactivate = true;
             break;
         case '?':
             if (optopt == 'c')
@@ -135,7 +142,12 @@ int main(int argc, char* argv[])
 
     {
         auto starter = std::unique_ptr<IPluginStarter>(new COMRPCStarter(gPluginName));
-        success = starter->activatePlugin(gRetryCount, gRetryDelayMs);
+        // Explicitly check for deactivate or activate
+        if (gDeactivate) {
+            success = starter->deactivatePlugin(gRetryCount, gRetryDelayMs);
+        } else {
+            success = starter->activatePlugin(gRetryCount, gRetryDelayMs);
+        }
     }
 
     Core::Singleton::Dispose();

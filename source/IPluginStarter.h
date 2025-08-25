@@ -40,4 +40,5 @@ public:
      * @param[in]   retryDelayMs        Amount of time to wait after a failed activation before retrying again
      */
     virtual bool activatePlugin(const uint8_t maxRetries, const uint16_t retryDelayMs) = 0;
+    virtual bool deactivatePlugin(const uint8_t maxRetries, const uint16_t retryDelayMs) = 0;
 };
