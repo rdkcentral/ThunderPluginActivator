@@ -23,6 +23,8 @@
 #include "COMRPCStarter.h"
 #include <memory>
 
+#define PROCESS_NAME "WPEFramework"
+
 static int gRetryCount = 100;
 static int gRetryDelayMs = 500;
 static string gPluginName;
@@ -130,11 +132,45 @@ static void parseArgs(const int argc, char** argv)
     }
 }
 
+uint32_t getPID()
+{
+    char command[128] = {};
+    char buffer[128] = {};
+    uint32_t pid = 0;
+    snprintf(command, sizeof(command), "pidof %s", PROCESS_NAME);
+    FILE *fp = popen(command, "r");
+    if (!fp) {
+        fprintf(stderr, "popen for pidof %s failed\n", PROCESS_NAME);
+        return 0;
+    }
+    if (fgets(buffer, sizeof(buffer), fp) != NULL) {
+        pid = (uint32_t) atoi(buffer);
+    }
+    pclose(fp);
+    return pid;
+}
+
+bool isRunning( uint32_t pid)
+{
+    int rc = kill(pid, 0);
+    if(rc == 0 && pid != -1)
+        return true;
+    else
+        return false;
+}
+
 int main(int argc, char* argv[])
 {
     parseArgs(argc, argv);
 
     initLogging(gLogLevel);
+
+    // Check if WPEFramework is running before activating or deactivating
+    uint32_t pid = getPID();
+    if (!isRunning(pid)) {
+        fprintf(stderr, "WPEFramework process not running. Cannot activate/deactivate plugin.\n");
+        return EXIT_FAILURE;
+    }
 
     // For now, we only implement the starter in COM-RPC but could do a JSON-RPC version
     // in the future
