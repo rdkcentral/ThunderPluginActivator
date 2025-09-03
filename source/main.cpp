@@ -132,15 +132,17 @@ static void parseArgs(const int argc, char** argv)
     }
 }
 
-uint32_t getPID()
+
+uint32_t getPID(const char* processName)
 {
     char command[128] = {};
     char buffer[128] = {};
     uint32_t pid = 0;
-    snprintf(command, sizeof(command), "pidof %s", PROCESS_NAME);
+
+    snprintf(command, sizeof(command), "pidof %s", processName);
     FILE *fp = popen(command, "r");
     if (!fp) {
-        fprintf(stderr, "popen for pidof %s failed\n", PROCESS_NAME);
+        fprintf(stderr, "popen for pidof %s failed\n", processName);
         return 0;
     }
     if (fgets(buffer, sizeof(buffer), fp) != NULL) {
@@ -165,11 +167,14 @@ int main(int argc, char* argv[])
 
     initLogging(gLogLevel);
 
-    // Check if WPEFramework is running before activating or deactivating
-    uint32_t pid = getPID();
+    // Check if either WPEFramework or Thunder is running before activating or deactivating
+    uint32_t pid = getPID("WPEFramework");
+    if (!isRunning(pid))
+        pid = getPID("Thunder");
+
     if (!isRunning(pid)) {
-        fprintf(stderr, "WPEFramework process not running. Cannot activate/deactivate plugin.\n");
-        return EXIT_FAILURE;
+        fprintf(stderr, "Neither WPEFramework nor Thunder is running. Cannot activate/deactivate plugin.\n");
+        return 0;
     }
 
     // For now, we only implement the starter in COM-RPC but could do a JSON-RPC version
