@@ -23,8 +23,6 @@
 #include "COMRPCStarter.h"
 #include <memory>
 
-#define PROCESS_NAME "WPEFramework"
-
 static int gRetryCount = 100;
 static int gRetryDelayMs = 500;
 static string gPluginName;
@@ -167,12 +165,15 @@ int main(int argc, char* argv[])
 
     initLogging(gLogLevel);
 
-    // Check if either WPEFramework or Thunder is running before activating or deactivating
-    uint32_t pid = getPID("WPEFramework");
-    if (!isRunning(pid))
-        pid = getPID("Thunder");
+    // Check if WPEFramework is running
+    uint32_t wpePid = getPID("WPEFramework");
+    bool isWpeRunning = isRunning(wpePid);
 
-    if (!isRunning(pid)) {
+    // Check if Thunder is running
+    uint32_t thunderPid = getPID("Thunder");
+    bool isThunderRunning = isRunning(thunderPid);
+
+    if (!isWpeRunning || !isThunderRunning) {
         fprintf(stderr, "Neither WPEFramework nor Thunder is running. Cannot activate/deactivate plugin.\n");
         return 0;
     }
