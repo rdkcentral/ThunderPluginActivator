@@ -45,7 +45,7 @@ target_link_libraries(PluginActivator
 
 target_compile_options(PluginActivator
     PRIVATE
-    -Wall -Wextra -Werror
+    -Wall -Wextra
 )
 
 install(

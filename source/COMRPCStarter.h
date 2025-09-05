@@ -35,6 +35,7 @@ public:
     ~COMRPCStarter() override = default;
 
     bool activatePlugin(const uint8_t maxRetries, const uint16_t retryDelayMs) override;
+    bool deactivatePlugin(const uint8_t maxRetries, const uint16_t retryDelayMs) override;
 
 private:
     using ControllerConnector = RPC::SmartControllerInterfaceType<Exchange::Controller::ILifeTime>;
