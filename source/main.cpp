@@ -168,13 +168,16 @@ int main(int argc, char* argv[])
     // Check if WPEFramework is running
     uint32_t wpePid = getPID("WPEFramework");
     bool isWpeRunning = isRunning(wpePid);
+    if (!isWpeRunning) {
+        fprintf(stderr, "WPEFramework is not running. Cannot activate/deactivate plugin.\n");
+        return 0;
+    }
 
     // Check if Thunder is running
     uint32_t thunderPid = getPID("Thunder");
     bool isThunderRunning = isRunning(thunderPid);
-
-    if (!isWpeRunning || !isThunderRunning) {
-        fprintf(stderr, "Neither WPEFramework nor Thunder is running. Cannot activate/deactivate plugin.\n");
+    if (!isThunderRunning) {
+        fprintf(stderr, "Thunder is not running. Cannot activate/deactivate plugin.\n");
         return 0;
     }
 
