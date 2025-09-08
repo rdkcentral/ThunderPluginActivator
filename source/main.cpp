@@ -176,7 +176,7 @@ int main(int argc, char* argv[])
         isThunderRunning = isRunning(thunderPid);
 
         if (!isThunderRunning) {
-            fprintf(stderr, "Neither WPEFramework nor Thunder is running.\n");
+            fprintf(stderr, "Thunder is not running.\n");
             return 0;
         }
     }
