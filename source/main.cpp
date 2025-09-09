@@ -28,6 +28,8 @@ static int gRetryDelayMs = 500;
 static string gPluginName;
 static int gLogLevel = LEVEL_INFO;
 
+static bool gDeactivate = false;
+
 /**
  * @brief Display a help message for the tool
  */
@@ -39,6 +41,7 @@ static void displayUsage()
     printf("    -r, --retries       Maximum amount of retries to attempt to start the plugin before giving up\n");
     printf("    -d, --delay         Delay (in ms) between each attempt to start the plugin if it fails\n");
     printf("    -v, --verbose       Increase log level\n");
+    printf("    -x, --deactivate    Deactivate the plugin instead of activating\n");
     printf("\n");
     printf("    [callsign]          Callsign of the plugin to activate (Required)\n");
 }
@@ -61,6 +64,7 @@ static void parseArgs(const int argc, char** argv)
         { "retries", required_argument, nullptr, (int)'r' },
         { "delay", required_argument, nullptr, (int)'d' },
         { "verbose", no_argument, nullptr, (int)'v' },
+        { "deactivate", no_argument, nullptr, (int)'x' },
         { nullptr, 0, nullptr, 0 }
     };
 
@@ -69,7 +73,7 @@ static void parseArgs(const int argc, char** argv)
     int option;
     int longindex;
 
-    while ((option = getopt_long(argc, argv, "hr:d:v", longopts, &longindex)) != -1) {
+    while ((option = getopt_long(argc, argv, "hr:d:v:x", longopts, &longindex)) != -1) {
         switch (option) {
         case 'h':
             displayUsage();
@@ -93,6 +97,9 @@ static void parseArgs(const int argc, char** argv)
             if (gLogLevel < LEVEL_DEBUG) {
                 gLogLevel++;
             }
+            break;
+        case 'x':
+            gDeactivate = true;
             break;
         case '?':
             if (optopt == 'c')
@@ -123,11 +130,56 @@ static void parseArgs(const int argc, char** argv)
     }
 }
 
+
+uint32_t getPID(const char* processName)
+{
+    char command[128] = {};
+    char buffer[128] = {};
+    uint32_t pid = 0;
+
+    snprintf(command, sizeof(command), "pidof %s", processName);
+    FILE *fp = popen(command, "r");
+    if (!fp) {
+        fprintf(stderr, "popen for pidof %s failed\n", processName);
+        return 0;
+    }
+    if (fgets(buffer, sizeof(buffer), fp) != NULL) {
+        pid = (uint32_t) atoi(buffer);
+    }
+    pclose(fp);
+    return pid;
+}
+
+bool isRunning( uint32_t pid)
+{
+    int rc = kill(pid, 0);
+    if(rc == 0 && pid != -1)
+        return true;
+    else
+        return false;
+}
+
 int main(int argc, char* argv[])
 {
     parseArgs(argc, argv);
 
     initLogging(gLogLevel);
+
+    // Check if WPEFramework is running
+    uint32_t wpePid = getPID("WPEFramework");
+    bool isWpeRunning = isRunning(wpePid);
+
+    bool isThunderRunning = false;
+    // Only check Thunder if WPEFramework is not running
+    if (!isWpeRunning) {
+        uint32_t thunderPid = getPID("Thunder");
+        isThunderRunning = isRunning(thunderPid);
+
+        if (!isThunderRunning) {
+            fprintf(stderr, "Thunder is not running.\n");
+            return 0;
+        }
+    }
 
     // For now, we only implement the starter in COM-RPC but could do a JSON-RPC version
     // in the future
@@ -135,7 +187,12 @@ int main(int argc, char* argv[])
 
     {
         auto starter = std::unique_ptr<IPluginStarter>(new COMRPCStarter(gPluginName));
-        success = starter->activatePlugin(gRetryCount, gRetryDelayMs);
+        // Explicitly check for deactivate or activate
+        if (gDeactivate) {
+            success = starter->deactivatePlugin(gRetryCount, gRetryDelayMs);
+        } else {
+            success = starter->activatePlugin(gRetryCount, gRetryDelayMs);
+        }
     }
 
     Core::Singleton::Dispose();
