@@ -26,7 +26,7 @@
 
 #include <future>
 
-using namespace Thunder;
+using namespace WPEFramework;
 
 /**
  * @brief COM-RPC implementation of a plugin starter

@@ -38,7 +38,7 @@ COMRPCStarter::COMRPCStarter(const string& pluginName)
 #else
     , _timeoutvalue(RPC::CommunicationTimeOut)
 #endif
-    , _connector(_timeoutvalue)
+    , _connector()
     , _pluginName(pluginName)
 {  
 }
@@ -91,7 +91,7 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
         } else {
             PluginActivatorCallback::PluginActivatorPromise pluginActivateAsyncResultPromise;
             std::future<Exchange::IPluginAsyncStateControl::IActivationCallback::state> pluginActivateAsyncResultFuture = pluginActivateAsyncResultPromise.get_future();       
-            Core::SinkType<PluginActivatorCallback> sink(std::move(pluginActivateAsyncResultPromise));
+            Core::Sink<PluginActivatorCallback> sink(std::move(pluginActivateAsyncResultPromise));
             Core::OptionalType<uint8_t> retries(maxRetries - currentRetry);
             Core::OptionalType<uint16_t> delay(retryDelayMs);
 
@@ -149,7 +149,7 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
                 retry = false;
             }
 
-            sink.WaitReleased(RPC::CommunicationTimeOut);
+            //sink.WaitReleased(RPC::CommunicationTimeOut);
 
             asyncpluginstarter->Release();
             asyncpluginstarter = nullptr;

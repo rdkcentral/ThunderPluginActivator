@@ -21,7 +21,7 @@ project(PluginActivator)
 
 set(CMAKE_CXX_STANDARD 11)
 
-find_package(Thunder)
+find_package(WPEFramework)
 
 find_package(${NAMESPACE}Core REQUIRED)
 find_package(${NAMESPACE}COM REQUIRED)
