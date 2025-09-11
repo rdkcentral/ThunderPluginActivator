@@ -67,6 +67,7 @@ private:
 
 private:
     const uint32_t _timeoutvalue; // note order is important here
+    Core::ProxyType<PluginActivatorCallback> _callback;
     ControllerConnector _connector;
     const string _pluginName;
 };
