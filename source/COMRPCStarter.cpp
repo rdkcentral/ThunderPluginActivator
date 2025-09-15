@@ -64,7 +64,7 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
     while ((retry == true) && (currentRetry <= maxRetries)) { // first attempt not included, that is not a retry...
         LOG_INF(_pluginName.c_str(), "Attempting to activate plugin - attempt %d/%d", currentRetry, maxRetries);
 
-        auto start = Core::Time::Now();
+        Core::StopWatch stopwatch;
 
         if (_connector.IsOperational() == false) {
             uint32_t result = _connector.Open(_timeoutvalue, ControllerConnector::Connector());
@@ -164,56 +164,3 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
     return success;
 }
 
-bool COMRPCStarter::deactivatePlugin(const uint8_t maxRetries, const uint16_t retryDelayMs)
-{
-    bool success = false;
-    int currentRetry = 1;
-
-    while (!success && currentRetry <= maxRetries) {
-        LOG_INF(_pluginName.c_str(), "Attempting to deactivate plugin - attempt %d/%d", currentRetry, maxRetries);
-
-        auto start = Core::Time::Now();
-
-        if (_connector.IsOperational() == false) {
-            uint32_t result = _connector.Open(RPC::CommunicationTimeOut, ControllerConnector::Connector());
-            if(result != Core::ERROR_NONE) {
-                LOG_ERROR(_pluginName.c_str(), "Failed to get controller interface, error %u (%s)", result, Core::ErrorToString(result));
-            }
-        }
-
-        Exchange::Controller::ILifeTime* lifetime = _connector.Interface();
-
-        if (lifetime == nullptr) {
-            LOG_ERROR(_pluginName.c_str(), "Failed to open ILifeTime interface" );
-            currentRetry++;
-
-            _connector.Close(RPC::CommunicationTimeOut);
-
-            std::this_thread::sleep_for(std::chrono::milliseconds(retryDelayMs));
-        } else {
-            uint32_t result = lifetime->Deactivate(_pluginName.c_str());
-
-            auto duration = Core::Time::Now().Sub(start.MilliSeconds());
-
-            if (result != Core::ERROR_NONE) {
-                LOG_ERROR(_pluginName.c_str(), "Failed to deactivate plugin with error %u (%s) after %dms", result, Core::ErrorToString(result), duration.MilliSeconds());
-                currentRetry++;
-                std::this_thread::sleep_for(std::chrono::milliseconds(retryDelayMs));
-            } else {
-                LOG_INF(_pluginName.c_str(), "Successfully deactivated plugin after %dms", duration.MilliSeconds());
-                success = true;
-            }
-            lifetime->Release();
-        }
-    }
-
-    if (!success) {
-        LOG_ERROR(_pluginName.c_str(), "Max retries hit - giving up deactivating the plugin");
-    }
-
-    if (_connector.IsOperational() == true) {
-        _connector.Close(RPC::CommunicationTimeOut);
-    }
-
-    return success;
-}

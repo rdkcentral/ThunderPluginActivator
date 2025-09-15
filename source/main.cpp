@@ -29,8 +29,6 @@ static string gPluginName;
 static int gLogLevel = LEVEL_INFO;
 static string gPluginActivatorCallsign{ "PluginInitializerService" };
 
-static bool gDeactivate = false;
-
 /**
  * @brief Display a help message for the tool
  */
@@ -136,35 +134,6 @@ static bool parseArgs(const int argc, char** argv)
     }
 
     return success;
-}
-
-
-uint32_t getPID(const char* processName)
-{
-    char command[128] = {};
-    char buffer[128] = {};
-    uint32_t pid = 0;
-
-    snprintf(command, sizeof(command), "pidof %s", processName);
-    FILE *fp = popen(command, "r");
-    if (!fp) {
-        fprintf(stderr, "popen for pidof %s failed\n", processName);
-        return 0;
-    }
-    if (fgets(buffer, sizeof(buffer), fp) != NULL) {
-        pid = (uint32_t) atoi(buffer);
-    }
-    pclose(fp);
-    return pid;
-}
-
-bool isRunning( uint32_t pid)
-{
-    int rc = kill(pid, 0);
-    if(rc == 0 && pid != -1)
-        return true;
-    else
-        return false;
 }
 
 int main(int argc, char* argv[])
