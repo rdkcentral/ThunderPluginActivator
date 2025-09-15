@@ -37,7 +37,6 @@ class COMRPCStarter : public IPluginStarter {
 public:
     explicit COMRPCStarter(const string& pluginName);
     ~COMRPCStarter() override = default;
-
     bool activatePlugin(const uint8_t maxRetries, const uint16_t retryDelayMs, const string& pluginActivatorCallsign) override;
 
 private:
