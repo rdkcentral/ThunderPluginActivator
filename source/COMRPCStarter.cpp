@@ -148,8 +148,6 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
                 retry = false;
             }
 
-            //sink.WaitReleased(RPC::CommunicationTimeOut);
-
             asyncpluginstarter->Release();
             asyncpluginstarter = nullptr;
         }
