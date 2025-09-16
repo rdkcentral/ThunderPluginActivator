@@ -93,8 +93,8 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
             PluginActivatorCallback::PluginActivatorPromise pluginActivateAsyncResultPromise;
             std::future<Exchange::IPluginAsyncStateControl::IActivationCallback::state> pluginActivateAsyncResultFuture = pluginActivateAsyncResultPromise.get_future();       
             _callback = Core::ProxyType<PluginActivatorCallback>::Create(std::move(pluginActivateAsyncResultPromise));
-            Core::OptionalType<uint8_t> retries(maxRetries - currentRetry);
-            Core::OptionalType<uint16_t> delay(retryDelayMs);
+            uint8_t retries = maxRetries - currentRetry;
+            uint16_t delay {retryDelayMs};
             Core::hresult result = asyncpluginstarter->Activate(_pluginName, retries, delay, &(*_callback));
 
             if (result == Core::ERROR_NONE) {
