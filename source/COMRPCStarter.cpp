@@ -88,7 +88,7 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
             currentRetry++;
 
             // Sleep, then try again
-            std::this_thread::sleep_for(std::chrono::milliseconds(retryDelayMs));
+            SleepMs(retryDelayMs);
         } else {
             PluginActivatorCallback::PluginActivatorPromise pluginActivateAsyncResultPromise;
             std::future<Exchange::IPluginAsyncStateControl::IActivationCallback::state> pluginActivateAsyncResultFuture = pluginActivateAsyncResultPromise.get_future();       
