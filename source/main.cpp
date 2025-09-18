@@ -150,13 +150,12 @@ uint32_t getPID(const char* processName)
     return pid;
 }
 
-bool isRunning( uint32_t pid)
+bool isRunning(uint32_t pid)
 {
-    int rc = kill(pid, 0);
-    if(rc == 0 && pid != -1)
-        return true;
-    else
+    if (pid == 0)
         return false;
+
+    return (kill(pid, 0) == 0);
 }
 
 int main(int argc, char* argv[])
@@ -168,12 +167,14 @@ int main(int argc, char* argv[])
     // Check if WPEFramework is running
     uint32_t wpePid = getPID("WPEFramework");
     bool isWpeRunning = isRunning(wpePid);
+    fprintf(stderr, "[INFO] WPEFramework running=%d\n", isWpeRunning);
 
     bool isThunderRunning = false;
     // Only check Thunder if WPEFramework is not running
     if (!isWpeRunning) {
         uint32_t thunderPid = getPID("Thunder");
         isThunderRunning = isRunning(thunderPid);
+        fprintf(stderr, "[INFO] Thunder running=%d\n", isThunderRunning);
 
         if (!isThunderRunning) {
             fprintf(stderr, "Thunder is not running.\n");
