@@ -130,7 +130,8 @@ static void parseArgs(const int argc, char** argv)
     }
 }
 
-
+//we shall update this changes under gDeactivate
+#if 0
 uint32_t getPID(const char* processName)
 {
     char command[128] = {};
@@ -157,6 +158,7 @@ bool isRunning(uint32_t pid)
 
     return (kill(pid, 0) == 0);
 }
+#endif
 
 int main(int argc, char* argv[])
 {
@@ -164,6 +166,8 @@ int main(int argc, char* argv[])
 
     initLogging(gLogLevel);
 
+//we shall update this changes under gDeactivate
+#if 0
     // Check if WPEFramework is running
     uint32_t wpePid = getPID("WPEFramework");
     bool isWpeRunning = isRunning(wpePid);
@@ -181,6 +185,7 @@ int main(int argc, char* argv[])
             return 0;
         }
     }
+#endif
 
     // For now, we only implement the starter in COM-RPC but could do a JSON-RPC version
     // in the future
