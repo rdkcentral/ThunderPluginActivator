@@ -38,7 +38,7 @@ COMRPCStarter::COMRPCStarter(const string& pluginName)
 #else
     , _timeoutvalue(RPC::CommunicationTimeOut)
 #endif
-    , _callback()
+    //, _callback()
     , _connector()
     , _pluginName(pluginName)
 {  
@@ -92,10 +92,10 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
         } else {
             PluginActivatorCallback::PluginActivatorPromise pluginActivateAsyncResultPromise;
             std::future<Exchange::IPluginAsyncStateControl::IActivationCallback::state> pluginActivateAsyncResultFuture = pluginActivateAsyncResultPromise.get_future();       
-            _callback = Core::ProxyType<PluginActivatorCallback>::Create(std::move(pluginActivateAsyncResultPromise));
+            Core::Sink<PluginActivatorCallback> sink (std::move(pluginActivateAsyncResultPromise));
             uint8_t retries = maxRetries - currentRetry;
             uint16_t delay {retryDelayMs};
-            Core::hresult result = asyncpluginstarter->Activate(_pluginName, retries, delay, &(*_callback));
+            Core::hresult result = asyncpluginstarter->Activate(_pluginName, retries, delay, &sink);
 
             if (result == Core::ERROR_NONE) {
                 LOG_INF(_pluginName.c_str(), "Plugin activation async request sent, waiting for result");
@@ -147,6 +147,7 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
                 // for the above does not make sense to try again...
                 retry = false;
             }
+            sink.WaitReleased(RPC::CommunicationTimeOut);
 
             asyncpluginstarter->Release();
             asyncpluginstarter = nullptr;
