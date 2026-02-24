@@ -152,17 +152,22 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
             LOG_ERROR(_pluginName.c_str(), "All references for sink is released");
 
             asyncpluginstarter->Release();
+            LOG_ERROR(_pluginName.c_str(), "AsyncPluginStarter interface released");
             asyncpluginstarter = nullptr;
         }
     }
+    LOG_ERROR(_pluginName.c_str(), "AsyncPluginStarter interface released");
 
     if (!success) {
         LOG_ERROR(_pluginName.c_str(), "Max retries hit or startup aborted - giving up activating the plugin");
     }
 
     if (_connector.IsOperational() == true) {
+        LOG_ERROR(_pluginName.c_str(), "Connection is operational");
         _connector.Close(_timeoutvalue);
+        LOG_ERROR(_pluginName.c_str(), "Closing connection");
     }
+    LOG_ERROR(_pluginName.c_str(), "End of PluginActivator");
 
     return success;
 }
