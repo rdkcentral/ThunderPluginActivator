@@ -147,7 +147,9 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
                 // for the above does not make sense to try again...
                 retry = false;
             }
-            sink.WaitReleased(RPC::CommunicationTimeOut);
+            LOG_ERROR(_pluginName.c_str(), "Waiting for the sink to be released from other end");
+            sink.WaitReleased(Core::infinite);
+            LOG_ERROR(_pluginName.c_str(), "All references for sink is released");
 
             asyncpluginstarter->Release();
             asyncpluginstarter = nullptr;
