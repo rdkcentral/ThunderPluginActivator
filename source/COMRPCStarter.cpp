@@ -80,7 +80,7 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
         PluginHost::IShell* controller = _connector.ControllerInterface();
         ASSERT(controller != nullptr);
         Exchange::IPluginAsyncStateControl* asyncpluginstarter = controller->QueryInterfaceByCallsign<Exchange::IPluginAsyncStateControl>(pluginActivatorCallsign);
-        controller->Release();
+        //controller->Release();
         controller = nullptr;
 
         if (asyncpluginstarter == nullptr) {
