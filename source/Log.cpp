@@ -19,7 +19,7 @@
 
 #include "Log.h"
 
-int gActivatorLogLevel = LEVEL_DEBUG;
+int gActivatorLogLevel = LEVEL_INFO;
 
 void initLogging(int logLevel)
 {

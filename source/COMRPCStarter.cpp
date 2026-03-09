@@ -38,7 +38,6 @@ COMRPCStarter::COMRPCStarter(const string& pluginName)
 #else
     , _timeoutvalue(RPC::CommunicationTimeOut)
 #endif
-    //, _callback()
     , _connector()
     , _pluginName(pluginName)
 {  
@@ -80,7 +79,6 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
         PluginHost::IShell* controller = _connector.ControllerInterface();
         ASSERT(controller != nullptr);
         Exchange::IPluginAsyncStateControl* asyncpluginstarter = controller->QueryInterfaceByCallsign<Exchange::IPluginAsyncStateControl>(pluginActivatorCallsign);
-        //controller->Release();
         controller = nullptr;
 
         if (asyncpluginstarter == nullptr) {
@@ -147,9 +145,7 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
                 // for the above does not make sense to try again...
                 retry = false;
             }
-            LOG_ERROR(_pluginName.c_str(), "Waiting for the sink to be released from other end");
             sink.WaitReleased(Core::infinite);
-            LOG_ERROR(_pluginName.c_str(), "All references for sink is released");
 
             asyncpluginstarter->Release();
             asyncpluginstarter = nullptr;
