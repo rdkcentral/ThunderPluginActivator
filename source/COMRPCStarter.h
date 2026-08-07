@@ -22,7 +22,7 @@
 
 #include "IPluginStarter.h"
 
-using namespace WPEFramework;
+using namespace Thunder;
 
 /**
  * @brief COM-RPC implementation of a plugin starter
