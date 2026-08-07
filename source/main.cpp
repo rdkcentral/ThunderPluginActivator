@@ -168,13 +168,13 @@ int main(int argc, char* argv[])
 
 //we shall update this changes under gDeactivate
 #if 0
-    // Check if WPEFramework is running
-    uint32_t wpePid = getPID("WPEFramework");
+    // Check if Thunder is running
+    uint32_t wpePid = getPID("Thunder");
     bool isWpeRunning = isRunning(wpePid);
-    fprintf(stderr, "[INFO] WPEFramework running=%d\n", isWpeRunning);
+    fprintf(stderr, "[INFO] Thunder running=%d\n", isWpeRunning);
 
     bool isThunderRunning = false;
-    // Only check Thunder if WPEFramework is not running
+    // Only check Thunder if Thunder is not running
     if (!isWpeRunning) {
         uint32_t thunderPid = getPID("Thunder");
         isThunderRunning = isRunning(thunderPid);
