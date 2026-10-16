@@ -1,0 +1,23 @@
+name: Build ThunderPluginActivator on Linux
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  Thunder:
+    uses: rdkcentral/Thunder/.github/workflows/Linux build template.yml@master
+
+  ThunderPluginActivator:
+    needs: Thunder
+    uses: ./.github/workflows/Linux build template.yml

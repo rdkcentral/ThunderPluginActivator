@@ -1,0 +1,78 @@
+name: Linux build template
+
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+
+jobs:
+  ThunderPluginActivator:
+    runs-on: ubuntu-24.04
+
+    strategy:
+      matrix:
+        build_type: [Debug, Release, MinSizeRel]
+        architecture: [32, 64]
+
+    name: Build type - ${{ matrix.build_type }}${{ matrix.architecture == '32' && ' x86' || '' }}
+    steps:
+    - name: Install system dependencies
+      uses: rdkcentral/ThunderTools/.github/actions/apt-dependencies@master
+      with:
+        architecture: ${{ matrix.architecture }}
+
+    - name: Checkout PluginActivator
+      uses: actions/checkout@v5
+      with:
+        path: PluginActivator
+
+    - name: Checkout ThunderExtensions
+      uses: actions/checkout@v5
+      with:
+        path: ThunderExtensions
+        repository: rdkcentral/ThunderExtensions
+        ref: main
+
+    - name: Set up Python environment
+      run: |
+        python3 -m venv venv
+        source venv/bin/activate
+        pip install --upgrade pip
+        pip install jsonref
+
+    - name: Download Thunder artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: Thunder-${{ matrix.build_type }}${{ matrix.architecture == '32' && '_x86' || '' }}-artifact
+        path: ${{ matrix.build_type }}
+
+    - name: Unpack Thunder artifact
+      run: |
+        tar -xvzf ${{ matrix.build_type }}/${{ matrix.build_type }}${{ matrix.architecture == '32' && '_x86' || '' }}.tar.gz
+        rm ${{ matrix.build_type }}/${{ matrix.build_type }}${{ matrix.architecture == '32' && '_x86' || '' }}.tar.gz
+
+    - name: Build ThunderExtensions
+      run: |
+        source venv/bin/activate
+        ${{ matrix.architecture == '32' && 'export PKG_CONFIG_PATH=/usr/lib/i386-linux-gnu/pkgconfig:$PKG_CONFIG_PATH' || 'export PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH' }}
+        cmake -G Ninja -S ThunderExtensions -B ${{ matrix.build_type }}/build/ThunderExtensions \
+          -DCMAKE_CXX_FLAGS="-m${{ matrix.architecture }}" \
+          -DCMAKE_C_FLAGS="-m${{ matrix.architecture }}" \
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+          -DCMAKE_INSTALL_PREFIX="${PWD}/${{ matrix.build_type }}/install/usr" \
+          -DCMAKE_MODULE_PATH="${PWD}/${{ matrix.build_type }}/install/usr/include/Thunder/Modules;${PWD}/${{ matrix.build_type }}/install/usr/include/WPEFramework/Modules" \
+          -DCMAKE_PREFIX_PATH="${PWD}/${{ matrix.build_type }}/install/usr" \
+          -DEXT_PLUGIN_INITIALIZER=ON
+        cmake --build ${{ matrix.build_type }}/build/ThunderExtensions --target install
+
+    - name: Build ThunderPluginActivator
+      run: |
+        cmake -G Ninja -S PluginActivator -B ${{ matrix.build_type }}/build/ThunderPluginActivator \
+          -DCMAKE_CXX_FLAGS="-m${{ matrix.architecture }}" \
+          -DCMAKE_C_FLAGS="-m${{ matrix.architecture }}" \
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+          -DCMAKE_INSTALL_PREFIX="${PWD}/${{ matrix.build_type }}/install/usr" \
+          -DCMAKE_MODULE_PATH="${PWD}/${{ matrix.build_type }}/install/usr/include/Thunder/Modules;${PWD}/${{ matrix.build_type }}/install/usr/include/WPEFramework/Modules" \
+          -DCMAKE_PREFIX_PATH="${PWD}/${{ matrix.build_type }}/install/usr"
+        cmake --build ${{ matrix.build_type }}/build/ThunderPluginActivator --target install
