@@ -27,8 +27,7 @@ static int gRetryCount = 100;
 static int gRetryDelayMs = 500;
 static string gPluginName;
 static int gLogLevel = LEVEL_INFO;
-
-static bool gDeactivate = false;
+static string gPluginActivatorCallsign{ "PluginInitializerService" };
 
 /**
  * @brief Display a help message for the tool
@@ -36,14 +35,14 @@ static bool gDeactivate = false;
 static void displayUsage()
 {
     printf("Usage: PluginActivator <option(s)> [callsign]\n");
-    printf("    Utility that starts a given thunder plugin\n\n");
-    printf("    -h, --help          Print this help and exit\n");
-    printf("    -r, --retries       Maximum amount of retries to attempt to start the plugin before giving up\n");
-    printf("    -d, --delay         Delay (in ms) between each attempt to start the plugin if it fails\n");
-    printf("    -v, --verbose       Increase log level\n");
-    printf("    -x, --deactivate    Deactivate the plugin instead of activating\n");
+    printf("    Utility that starts a given Thunder plugin\n\n");
+    printf("    -h, --help                Print this help and exit\n");
+    printf("    -r, --retries             Maximum amount of retries to attempt to start the plugin before giving up\n");
+    printf("    -d, --delay               Delay (in ms) between each attempt to start the plugin if it fails\n");
+    printf("    -p, --plugininitcallsign  Callsign of the PluginInitializerService (default: PluginInitializerService)\n");
+    printf("    -v, --verbose             Increase log level\n");
     printf("\n");
-    printf("    [callsign]          Callsign of the plugin to activate (Required)\n");
+    printf("    [callsign]                Callsign of the plugin to activate (Required)\n");
 }
 
 /**
@@ -52,152 +51,103 @@ static void displayUsage()
  * Must be given the name of the plugin to activate, everything else
  * is optional and will fallback to sane defaults
  */
-static void parseArgs(const int argc, char** argv)
+static bool parseArgs(const int argc, char** argv)
 {
+    bool success = true;
     if (argc == 1) {
         displayUsage();
-        exit(EXIT_SUCCESS);
+        success = false;
     }
+    else {
 
-    struct option longopts[] = {
-        { "help", no_argument, nullptr, (int)'h' },
-        { "retries", required_argument, nullptr, (int)'r' },
-        { "delay", required_argument, nullptr, (int)'d' },
-        { "verbose", no_argument, nullptr, (int)'v' },
-        { "deactivate", no_argument, nullptr, (int)'x' },
-        { nullptr, 0, nullptr, 0 }
-    };
+            struct option longopts[] = {
+                { "help", no_argument, nullptr, (int)'h' },
+                { "retries", required_argument, nullptr, (int)'r' },
+                { "delay", required_argument, nullptr, (int)'d' },
+                { "plugininitcallsign", required_argument, nullptr, (int)'p' },
+                { "verbose", no_argument, nullptr, (int)'v' },
+                { nullptr, 0, nullptr, 0 }
+            };
+            opterr = 0;
 
-    opterr = 0;
+            int option;
+            int longindex;
 
-    int option;
-    int longindex;
+            while ((option = getopt_long(argc, argv, "hr:d:p:v", longopts, &longindex)) != -1) {
+                switch (option) {
+                case 'h':
+                    displayUsage();
+                    success = false;
+                    break;
+                case 'r':
+                    gRetryCount = std::atoi(optarg);
+                    if (gRetryCount < 0) {
+                        fprintf(stderr, "Error: Retry count must be > 0\n");
+                        success = false;
+                    }
+                    break;
+                case 'd':
+                    gRetryDelayMs = std::atoi(optarg);
+                    if (gRetryDelayMs < 0) {
+                        fprintf(stderr, "Error: Delay ms must be > 0\n");
+                        success = false;
+                    }
+                    break;
+                case 'p':
+                    gPluginActivatorCallsign = optarg;
+                    break;
+                case 'v':
+                   if (gLogLevel < LEVEL_DEBUG) {
+                        gLogLevel++;
+                    }                    
+                    break;
+                case '?':
+                    if (optopt == 'c')
+                        fprintf(stderr, "Warning: Option -%c requires an argument.\n", optopt);
+                    else if (isprint(optopt))
+                        fprintf(stderr, "Warning: Unknown option `-%c'.\n", optopt);
+                    else
+                        fprintf(stderr, "Warning: Unknown option character `\\x%x'.\n", optopt);
 
-    while ((option = getopt_long(argc, argv, "hr:d:v:x", longopts, &longindex)) != -1) {
-        switch (option) {
-        case 'h':
-            displayUsage();
-            exit(EXIT_SUCCESS);
-            break;
-        case 'r':
-            gRetryCount = std::atoi(optarg);
-            if (gRetryCount < 0) {
-                fprintf(stderr, "Error: Retry count must be > 0\n");
-                exit(EXIT_FAILURE);
+                    success = false;
+                    break;
+                default:
+                    success = false;
+                    break;
+                }
             }
-            break;
-        case 'd':
-            gRetryDelayMs = std::atoi(optarg);
-            if (gRetryDelayMs < 0) {
-                fprintf(stderr, "Error: Delay ms must be > 0\n");
-                exit(EXIT_FAILURE);
+
+            if (success == true) {
+                if(optind == argc) {
+                    fprintf(stderr, "Error: Must provide plugin name to activate\n");
+                    success = false;
+                } else {
+
+                    gPluginName = argv[optind];
+
+                    optind++;
+                    for (int i = optind; i < argc; i++) {
+                        printf("Warning: Non-option argument %s ignored\n", argv[i]);
+                    }
+                }
             }
-            break;
-        case 'v':
-            if (gLogLevel < LEVEL_DEBUG) {
-                gLogLevel++;
-            }
-            break;
-        case 'x':
-            gDeactivate = true;
-            break;
-        case '?':
-            if (optopt == 'c')
-                fprintf(stderr, "Warning: Option -%c requires an argument.\n", optopt);
-            else if (isprint(optopt))
-                fprintf(stderr, "Warning: Unknown option `-%c'.\n", optopt);
-            else
-                fprintf(stderr, "Warning: Unknown option character `\\x%x'.\n", optopt);
-
-            exit(EXIT_FAILURE);
-            break;
-        default:
-            exit(EXIT_FAILURE);
-            break;
-        }
     }
 
-    if (optind == argc) {
-        fprintf(stderr, "Error: Must provide plugin name to activate\n");
-        exit(EXIT_FAILURE);
-    }
-
-    gPluginName = argv[optind];
-
-    optind++;
-    for (int i = optind; i < argc; i++) {
-        printf("Warning: Non-option argument %s ignored\n", argv[i]);
-    }
+    return success;
 }
-
-//we shall update this changes under gDeactivate
-#if 0
-uint32_t getPID(const char* processName)
-{
-    char command[128] = {};
-    char buffer[128] = {};
-    uint32_t pid = 0;
-
-    snprintf(command, sizeof(command), "pidof %s", processName);
-    FILE *fp = popen(command, "r");
-    if (!fp) {
-        fprintf(stderr, "popen for pidof %s failed\n", processName);
-        return 0;
-    }
-    if (fgets(buffer, sizeof(buffer), fp) != NULL) {
-        pid = (uint32_t) atoi(buffer);
-    }
-    pclose(fp);
-    return pid;
-}
-
-bool isRunning(uint32_t pid)
-{
-    if (pid == 0)
-        return false;
-
-    return (kill(pid, 0) == 0);
-}
-#endif
 
 int main(int argc, char* argv[])
 {
-    parseArgs(argc, argv);
+    bool success = false;
+    if (parseArgs(argc, argv) == true) {
 
-    initLogging(gLogLevel);
+        initLogging(gLogLevel);
 
-//we shall update this changes under gDeactivate
-#if 0
-    // Check if WPEFramework is running
-    uint32_t wpePid = getPID("WPEFramework");
-    bool isWpeRunning = isRunning(wpePid);
-    fprintf(stderr, "[INFO] WPEFramework running=%d\n", isWpeRunning);
-
-    bool isThunderRunning = false;
-    // Only check Thunder if WPEFramework is not running
-    if (!isWpeRunning) {
-        uint32_t thunderPid = getPID("Thunder");
-        isThunderRunning = isRunning(thunderPid);
-        fprintf(stderr, "[INFO] Thunder running=%d\n", isThunderRunning);
-
-        if (!isThunderRunning) {
-            fprintf(stderr, "Thunder is not running.\n");
-            return 0;
-        }
-    }
-#endif
-
-    // For now, we only implement the starter in COM-RPC but could do a JSON-RPC version
-    // in the future
-    bool success;
-
-    {
-        auto starter = std::unique_ptr<IPluginStarter>(new COMRPCStarter(gPluginName));
-        // Explicitly check for deactivate or activate
-        if (gDeactivate) {
-            success = starter->deactivatePlugin(gRetryCount, gRetryDelayMs);
-        } else {
-            success = starter->activatePlugin(gRetryCount, gRetryDelayMs);
+        // For now, we only implement the starter in COM-RPC but could do a JSON-RPC version
+        // in the future
+        {
+            auto starter = std::unique_ptr<IPluginStarter>(new COMRPCStarter(gPluginName));
+            success = starter->activatePlugin(gRetryCount, gRetryDelayMs, gPluginActivatorCallsign);
         }
     }
 
