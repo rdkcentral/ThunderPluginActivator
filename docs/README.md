@@ -1,280 +1,177 @@
 # ThunderPluginActivator
 
-ThunderPluginActivator is a command-line utility for the RDK middleware stack that manages the lifecycle of Thunder (WPEFramework) plugins. It connects to the running Thunder process over COM-RPC and issues activate or deactivate requests for a named plugin identified by its callsign. The tool is designed to be invoked by a systemd service unit, giving each Thunder plugin an independent service identity with its own start and stop semantics managed entirely through standard OS service primitives.
+ThunderPluginActivator is a command-line utility for the RDK middleware stack that activates a Thunder (WPEFramework) plugin. It connects to the running Thunder process over COM-RPC, obtains the controller's `PluginHost::IShell`, locates the PluginInitializerService (PIS) by callsign, and asks the PIS to activate the named plugin. The PIS performs the activation and reports the result through a callback. The tool only activates plugins. It does not deactivate them. It is designed to be run by a systemd service unit, so each plugin can be started as an independent service.
 
-From a device perspective, ThunderPluginActivator allows platform integrators and service operators to bring Thunder plugins into service selectively and in a controlled order. Because each plugin activation is driven by a discrete systemd service unit, standard systemd dependency and ordering directives can govern plugin startup sequencing without embedding any ordering logic inside Thunder itself. This keeps the Thunder core decoupled from device-specific startup orchestration.
+From a device perspective, ThunderPluginActivator lets platform integrators bring Thunder plugins into service selectively and in a controlled order. Because each activation is driven by a systemd unit, standard systemd dependency and ordering directives can control startup sequencing without adding ordering logic to Thunder itself.
 
-At the module level, ThunderPluginActivator is a single-process, single-invocation executable. It parses command-line arguments to determine the target plugin callsign and operational parameters, opens a COM-RPC channel to Thunder's controller, obtains the `Exchange::Controller::ILifeTime` interface proxy, and calls `Activate()` or `Deactivate()` on the specified callsign. If a call fails, the tool retries up to a configurable maximum count with a configurable inter-retry delay before exiting with a non-zero status that systemd can interpret as a service failure.
-
----
+At the module level, ThunderPluginActivator is a single-process, single-invocation executable. It parses command-line arguments (target callsign, retry count, retry delay, PIS callsign, and verbosity), opens a COM-RPC connection to Thunder's controller, and obtains the `PluginHost::IShell` for the controller. It then queries `Exchange::IPluginAsyncStateControl` on the PIS callsign and calls `Activate()` with the target callsign, retry count, retry delay, and a callback sink. The tool waits for the callback's `Finished()` result and exits with `EXIT_SUCCESS` on success or `EXIT_FAILURE` otherwise. Activation retries are performed by the PIS. The tool itself retries only when it cannot open the connection, cannot find the PIS interface, or receives a COM-RPC error.
 
 ```mermaid
 flowchart LR
-
-%% Styles
-classDef Apps stroke:#00B9F1,fill:#E6F7FD,stroke-width:2px;
-classDef RDKMW stroke:#75D701,fill:#F1FFE6,stroke-width:2px;
-classDef SYS stroke:#FFA500,fill:#FFF3E0,stroke-width:2px;
-
-%% Apps Layer
-    subgraph Apps["Apps & Runtimes"]
-        RDKUI["UI"]
-        FBApps["Firebolt Apps"]
-        WPE_RT["WPE Runtime"]
-    end
-
-%% Middleware
-    subgraph RDKMW["RDK Core Middleware"]
-        Thunder["WPEFramework (Thunder)"]
-        TPA["ThunderPluginActivator"]
-        Plugins["Thunder Plugins"]
-    end
-
-%% System Layer
-    subgraph SYS["System Layer"]
-        Systemd["systemd"]
-    end
-
-    Apps -->|Firebolt APIs| RDKMW
-    Systemd -->|"Invokes binary (callsign, options)"| TPA
-    TPA -->|"COM-RPC: ILifeTime::Activate / Deactivate"| Thunder
-    Thunder -->|Manages plugin lifecycle| Plugins
-
-    class Apps Apps;
-    class RDKMW RDKMW;
-    class SYS SYS;
+    Systemd["systemd"] -->|"Invokes binary with callsign and options"| TPA["ThunderPluginActivator"]
+    TPA -->|"COM-RPC: controller connector"| Controller["Thunder controller (PluginHost::IShell)"]
+    TPA -->|"COM-RPC: IPluginAsyncStateControl::Activate"| PIS["PluginInitializerService"]
+    PIS -->|"Activates named plugin"| Plugins["Thunder plugins"]
 ```
 
-**Key Features & Responsibilities:**
+---
 
-- **Plugin Lifecycle Management**: Issues activate and deactivate requests to the Thunder controller for a named plugin callsign using the `Exchange::Controller::ILifeTime` COM-RPC interface, providing a controlled mechanism to bring plugins in and out of service.
-- **Retry with Configurable Back-off**: Retries failed activation or deactivation attempts up to a user-defined maximum, pausing for a configurable delay between each attempt to tolerate transient unavailability of the Thunder process or unmet plugin preconditions.
-- **Systemd Integration**: Designed to serve as the `ExecStart` command of a systemd service unit, enabling standard service dependency and ordering directives to govern Thunder plugin startup sequencing at the OS level.
-- **Deactivation Support**: Supports deactivating a running plugin via the `--deactivate` flag, enabling orderly teardown as part of a systemd service stop action.
-- **Structured Logging**: Emits severity-tagged log messages to stderr across four levels (ERROR, WARN, INFO, DEBUG) with file, line, and function context, with verbosity adjustable at invocation time via command-line flags.
+## Key Features & Responsibilities
+
+- **Plugin Activation**: Requests activation of a named plugin callsign from the PluginInitializerService through the `Exchange::IPluginAsyncStateControl` COM-RPC interface, and waits for the result callback before exiting.
+- **Configurable Retries and Delay**: The maximum retry count (`-r`) and the delay between retries (`-d`) are passed to the PIS, which performs the retries for activation failures. The tool also retries its own connection and COM-RPC errors with the same settings. The delay is fixed; there is no back-off.
+- **Systemd Integration**: Designed to serve as the `ExecStart` command of a systemd service unit, so standard dependency and ordering directives can govern Thunder plugin startup at the OS level.
+- **No Deactivation**: ThunderPluginActivator supports only activation. There is no deactivate path and no deactivate option.
+- **Structured Logging**: Writes severity-tagged messages to stderr at four levels (ERROR, WARN, INFO, DEBUG) with file, line, and function context. The activation path currently logs only INFO and ERROR messages, so `-v` does not change its output.
 
 ---
 
 ## Design
 
-ThunderPluginActivator follows a minimal, single-purpose design: it is a one-shot command-line binary rather than a long-running daemon or a Thunder plugin in its own right. The design separates argument handling, COM-RPC connectivity, and plugin lifecycle invocation into distinct source units. An abstract `IPluginStarter` interface decouples the activation logic from the IPC transport mechanism, meaning a JSON-RPC–based implementation could be introduced without altering the core retry loop or the entry point. The current implementation uses COM-RPC exclusively, connecting to Thunder's built-in controller over the WPEFramework IPC socket. The binary is stateless between invocations; all operational parameters are supplied as command-line arguments and no persistent state is read from or written to disk.
+ThunderPluginActivator is a one-shot command-line binary, not a long-running daemon or a Thunder plugin. Argument handling, COM-RPC connectivity, and plugin activation are separated into distinct source units. An abstract `IPluginStarter` interface separates the entry point from the IPC transport. The source notes that a JSON-RPC implementation is a possible future option; only COM-RPC exists today. The binary keeps no state between invocations. All parameters come from the command line, and it does not read or write persistent files.
 
-Northbound, ThunderPluginActivator is driven by systemd. Each Thunder plugin that requires explicit activation is assigned a systemd service unit whose `ExecStart` entry invokes `PluginActivator` with the appropriate callsign. Systemd dependency declarations then determine the ordering relative to other services. Southbound, the tool communicates with the Thunder controller process over COM-RPC, using the `ILifeTime` interface to manage plugin lifecycle.
+Northbound, the tool is driven by systemd. Each plugin that needs explicit activation can be given a systemd service unit whose `ExecStart` invokes `PluginActivator` with the plugin's callsign. Southbound, the tool talks to the Thunder controller process over COM-RPC to reach the PluginInitializerService, which performs the activation.
 
-IPC is handled entirely through WPEFramework COM-RPC. `COMRPCStarter` instantiates a `RPC::SmartControllerInterfaceType<Exchange::Controller::ILifeTime>` connector that opens the controller's IPC socket, retrieves the `ILifeTime` proxy interface, and issues `Activate()` or `Deactivate()` synchronously. The call blocks inside the COM-RPC runtime until Thunder responds or the connector is determined to be non-operational. If the connector cannot be opened or the interface cannot be obtained, the current attempt is abandoned and the retry counter is incremented.
+IPC is handled entirely through WPEFramework COM-RPC. `COMRPCStarter` uses a `RPC::SmartControllerInterfaceType<Exchange::Controller::ILifeTime>` connector only to open the controller connection and obtain its `PluginHost::IShell` through `ControllerInterface()`. It then calls `QueryInterfaceByCallsign<Exchange::IPluginAsyncStateControl>()` with the PIS callsign, and calls `Activate(pluginName, retries, delay, &sink)`. The result arrives through a `PluginActivatorCallback` sink, and the main thread blocks on a `std::future` until `Finished()` fires. The `ILifeTime` methods are never called. An unopened connector or a null PIS interface counts as a retry.
 
 ```mermaid
 graph TD
-
-    subgraph PluginActivatorBinary ["ThunderPluginActivator (C++ Executable)"]
-
-        subgraph EntryPoint ["Entry Point"]
-            MAIN["main()"]
-            ARGS["Argument Parser\n(parseArgs)"]
-        end
-
-        subgraph StarterInterface ["Plugin Starter Interface"]
-            IPLUGIN["IPluginStarter\n(Abstract Interface)"]
-        end
-
-        subgraph COMRPCLayer ["COM-RPC Starter"]
-            COMRPC["COMRPCStarter\n(IPluginStarter impl)"]
-            CONN["ControllerConnector\n(SmartControllerInterfaceType\n<ILifeTime>)"]
-        end
-
-        subgraph Logging ["Logging"]
-            LOG["Log Module\n(stderr, 4 levels)"]
-        end
-
-    end
-
-    subgraph ThunderController ["WPEFramework Thunder (External Process)"]
-        CTRL["Thunder Controller\nExchange::Controller::ILifeTime"]
-    end
-
-    MAIN -->|"Calls parseArgs()"| ARGS
-    ARGS -->|"Sets gPluginName, gRetryCount,\ngRetryDelayMs, gLogLevel, gDeactivate"| MAIN
-    MAIN -->|"Creates and calls"| IPLUGIN
-    IPLUGIN -->|"Implemented by"| COMRPC
-    COMRPC -->|"Opens / queries"| CONN
-    CONN -->|"COM-RPC socket"| CTRL
-    COMRPC -->|"Emits log messages"| LOG
+    MAIN["main()"] -->|"parseArgs()"| ARGS["Option parsing (static parseArgs)"]
+    MAIN -->|"initLogging(level)"| LOG["Log module (stderr)"]
+    MAIN -->|"owns via unique_ptr"| IPLUGIN["IPluginStarter (abstract)"]
+    IPLUGIN -.->|"implemented by"| COMRPC["COMRPCStarter"]
+    COMRPC -->|"open connector, QueryInterfaceByCallsign"| CTRL["Thunder controller"]
+    COMRPC -->|"Activate(), Finished() callback"| PIS["PluginInitializerService"]
+    COMRPC -->|"log messages"| LOG
 ```
 
 ### Threading Model
 
-- **Threading Architecture**: Single-threaded.
-- **Main Thread**: Parses command-line arguments, constructs the `COMRPCStarter` instance, drives the retry loop by calling `activatePlugin()` or `deactivatePlugin()`, and terminates when the operation succeeds or the maximum retry count is exhausted.
-- **Synchronization**: The COM-RPC call to `ILifeTime::Activate()` or `ILifeTime::Deactivate()` is blocking; the main thread suspends between retry attempts using `std::this_thread::sleep_for`.
+- **Application threading**: The tool's own logic is single-threaded. The main thread blocks while the PIS performs the activation.
+- **Completion**: `Finished()` is invoked by the Thunder COM-RPC layer. It sets a `std::promise` that the main thread waits on through a `std::future`.
+- **Teardown**: After the result arrives, the main thread waits for the sink to be released (`WaitReleased`) before it calls `Release()` on the PIS interface. Tool-level retries sleep with `SleepMs()`.
 
 ### RDK-V Platform and Integration Requirements
 
-- **WPEFramework Version**: Requires a WPEFramework build that exposes `Exchange::Controller::ILifeTime` through the `${NAMESPACE}COM` package.
-- **Build Dependencies**: `${NAMESPACE}Core`, `${NAMESPACE}COM`, `${NAMESPACE}Plugins`, `CompileSettingsDebug`, `cmake-native`, `wpeframework-tools-native` (required for COM-RPC stub and proxy code generation at build time).
-- **Plugin Dependencies**: ThunderPluginActivator requires the Thunder controller process to be reachable over COM-RPC before invocation.
-- **Systemd Services**: The Thunder daemon must be running and its COM-RPC socket must be accepting connections before `PluginActivator` is invoked.
-- **Startup Order**: Systemd service units using this tool should declare an appropriate ordering dependency on the Thunder service.
+- **WPEFramework**: The build uses `find_package(WPEFramework)` and links the `${NAMESPACE}COM` package, which provides the COM-RPC interfaces used here.
+- **Build dependencies**: `${NAMESPACE}Core`, `${NAMESPACE}COM`, `${NAMESPACE}Plugins`, and `CompileSettingsDebug`. The build has no code-generation or native-tools step.
+- **Runtime dependencies**: The Thunder controller must be running and reachable over COM-RPC. The PIS must be active in Thunder under the callsign given with `-p` (default `PluginInitializerService`). The tool does not start the PIS.
+- **Systemd**: Declare an ordering and requirement dependency on the Thunder service in units that use this tool, so activation begins after Thunder is up.
 
 ---
 
-### Component State Flow
+## Component State Flow
 
-#### Initialization to Active State
-
-ThunderPluginActivator is a one-shot process; its lifecycle spans from invocation to exit. The sequence below describes the activation path. The deactivation path follows the same structure with `ILifeTime::Deactivate()` replacing `ILifeTime::Activate()`.
+ThunderPluginActivator is a one-shot process. Its lifecycle runs from invocation to exit. The sequence below shows one invocation, including all of the tool's retry paths. There is no deactivation path.
 
 ```mermaid
 sequenceDiagram
     participant Systemd as systemd
     participant PA as PluginActivator
-    participant Thunder as WPEFramework Controller
+    participant Thunder as Thunder controller
+    participant PIS as PluginInitializerService
 
-    Systemd->>PA: Invoke binary with callsign and options
-    Note over PA: Parse arguments, initialize logging
+    Systemd->>PA: Start with callsign and options
+    Note over PA: parseArgs, then initLogging
 
-    loop Up to maxRetries
-        PA->>Thunder: Open COM-RPC connector
-
-        alt Connector not operational
-            Thunder-->>PA: Open error
-            Note over PA: Log error, increment retry counter, sleep retryDelayMs
-        else ILifeTime interface obtained
-            Thunder-->>PA: ILifeTime proxy
-            PA->>Thunder: ILifeTime::Activate(callsign)
-
-            alt Activation succeeded (ERROR_NONE)
-                Thunder-->>PA: ERROR_NONE
-                Note over PA: Log success, exit retry loop
-            else ERROR_PENDING_CONDITIONS
-                Thunder-->>PA: ERROR_PENDING_CONDITIONS
-                Note over PA: Log unmet preconditions, increment retry, sleep
-            else Other error
-                Thunder-->>PA: Error code
-                Note over PA: Log error with code and elapsed time, increment retry, sleep
+    loop Tool-level attempts while retry counter is at most retries
+        PA->>Thunder: Open COM-RPC connector (only if not operational)
+        alt Open fails
+            Thunder-->>PA: Error
+            Note over PA: Log error, add one to retry counter, sleep delay, next attempt
+        else Connector ready
+            PA->>Thunder: QueryInterfaceByCallsign IPluginAsyncStateControl (PIS callsign)
+            alt PIS interface is null
+                Thunder-->>PA: nullptr
+                Note over PA: Log error, add one to retry counter, sleep delay, next attempt
+            else PIS interface obtained
+                PA->>PIS: Activate(plugin, retries minus counter, delay, sink)
+                alt Returns ERROR_NONE
+                    PIS-->>PA: Request accepted
+                    PIS-->>PA: Finished(callsign, state, retries) via sink
+                    alt State SUCCESS
+                        Note over PA: Log success, stop retrying
+                    else State FAILURE or aborted
+                        Note over PA: Log error, stop retrying (PIS already retried)
+                    end
+                else COM error bit set
+                    Note over PA: Log error, add one to retry counter, sleep delay, next attempt
+                else Any other error code
+                    Note over PA: Log error, stop retrying
+                end
             end
         end
     end
 
     alt Success
-        PA->>Thunder: Close COM-RPC connector
-        PA-->>Systemd: Exit 0
-    else Max retries exhausted
-        Note over PA: Log final give-up message
-        PA->>Thunder: Close COM-RPC connector
-        PA-->>Systemd: Exit non-zero
+        PA-->>Systemd: Exit 0 (EXIT_SUCCESS)
+    else Failure
+        Note over PA: Log give-up message, close connector if open
+        PA-->>Systemd: Exit 1 (EXIT_FAILURE)
     end
 ```
 
 #### Runtime State Changes
 
-ThunderPluginActivator is a one-shot binary; each invocation performs a single activation or deactivation operation and exits.
+**Retry triggers:**
 
-**State Change Triggers:**
+- If the COM-RPC connector cannot be opened, the tool logs the error, increments the retry counter, sleeps for the delay, and tries again.
+- If the PIS interface cannot be obtained, the tool logs the error, increments the retry counter, sleeps for the delay, and tries again.
+- If `Activate()` returns a COM-RPC error (the COM error bit is set), the tool logs the error, increments the retry counter, sleeps for the delay, and tries again.
 
-- If `ILifeTime::Activate()` returns `ERROR_PENDING_CONDITIONS`, the tool logs that preconditions are unmet and retries after the configured delay. This handles cases where a plugin's dependencies have not yet been satisfied at the time of the activation attempt.
-- If the COM-RPC connector cannot be opened, the tool closes the connector, increments the retry counter, and sleeps before the next attempt. This tolerates transient unavailability of the Thunder process during system startup.
+**No retry triggers:**
 
-**Context Switching Scenarios:**
+- If `Activate()` returns `ERROR_INPROGRESS`, `ERROR_ILLEGAL_STATE`, `ERROR_NOT_EXIST`, or another non-COM error, the tool logs it and stops.
+- If the PIS reports `FAILURE` or an aborted activation, the tool logs it and stops, because the PIS has already performed its own retries.
 
-- When the retry limit is reached without a successful activation or deactivation, the process exits with a non-zero code, which systemd interprets as a service failure and handles according to the unit's restart policy.
+**Give-up:** When the retry budget is used up, or the activation ends without success, the tool logs a give-up message and exits with `EXIT_FAILURE`. systemd then handles the failure according to the unit's restart policy.
 
 ---
 
 ### Call Flows
 
-#### Initialization Call Flow
+#### Startup and Argument Handling
 
 ```mermaid
-sequenceDiagram
-    participant Systemd as systemd
-    participant MAIN as PluginActivator (main)
-    participant ARGS as Argument Parser
-    participant LOG as Log Module
-    participant COMRPC as COMRPCStarter
-
-    Systemd->>MAIN: Start process with argv
-    MAIN->>ARGS: parseArgs(argc, argv)
-    ARGS-->>MAIN: gPluginName, gRetryCount, gRetryDelayMs, gLogLevel, gDeactivate
-    MAIN->>LOG: initLogging(gLogLevel)
-    MAIN->>COMRPC: new COMRPCStarter(gPluginName)
-
-    alt gDeactivate == true
-        MAIN->>COMRPC: deactivatePlugin(gRetryCount, gRetryDelayMs)
-    else
-        MAIN->>COMRPC: activatePlugin(gRetryCount, gRetryDelayMs)
-    end
-
-    COMRPC-->>MAIN: true (success) / false (failure)
-    MAIN-->>Systemd: Exit 0 (success) or Exit 1 (failure)
+flowchart TD
+    Start["Process start"] --> Parse["parseArgs(argc, argv)"]
+    Parse -->|"Usage, -h, unknown option, missing callsign, negative -r or -d"| Fail["EXIT_FAILURE"]
+    Parse -->|"Valid arguments"| Log["initLogging(gLogLevel)"]
+    Log --> Run["COMRPCStarter::activatePlugin(retries, delay, PIS callsign)"]
+    Run -->|"true"| Ok["EXIT_SUCCESS"]
+    Run -->|"false"| Fail
 ```
 
-#### Request Processing Call Flow
+#### Activation Request Flow
 
-The primary call flow is the COM-RPC activation request issued to the Thunder controller.
-
-```mermaid
-sequenceDiagram
-    participant COMRPC as COMRPCStarter
-    participant CONN as ControllerConnector
-    participant Thunder as WPEFramework Controller
-    participant Plugin as Target Thunder Plugin
-
-    COMRPC->>CONN: Open(CommunicationTimeOut, Connector())
-    CONN-->>COMRPC: ERROR_NONE or error code
-    COMRPC->>CONN: Interface() → ILifeTime*
-    CONN-->>COMRPC: ILifeTime proxy
-
-    COMRPC->>Thunder: ILifeTime::Activate(callsign)
-    Note over Thunder: Locate plugin by callsign, resolve preconditions
-    Thunder->>Plugin: Load and initialize plugin
-    Plugin-->>Thunder: Initialization complete
-    Thunder-->>COMRPC: ERROR_NONE
-
-    COMRPC->>CONN: ILifeTime::Release()
-    COMRPC->>CONN: Close(CommunicationTimeOut)
-```
+The activation request is the sequence shown in [Component State Flow](#component-state-flow). The tool sends one `Activate()` request to the PIS per attempt. The PIS owns plugin loading, precondition checks, and its own retries. The tool sends no other requests to Thunder.
 
 ---
 
-## Internal Modules
+## Modules
 
-| Module / Class | Description | Key Files |
-|---|---|---|
-| `main` | Entry point. Parses command-line arguments using `getopt_long`, initializes logging, constructs the `COMRPCStarter` instance, and dispatches to `activatePlugin()` or `deactivatePlugin()` based on the `--deactivate` flag. Exits with status `0` on success and `1` on failure. | `main.cpp` |
-| `IPluginStarter` | Abstract interface defining the `activatePlugin()` and `deactivatePlugin()` contracts. Decouples the retry and dispatch logic from the underlying IPC transport, allowing alternative transport implementations (such as JSON-RPC) to be introduced without modifying the entry point. | `IPluginStarter.h` |
-| `COMRPCStarter` | COM-RPC implementation of `IPluginStarter`. Opens a `SmartControllerInterfaceType<Exchange::Controller::ILifeTime>` connector to the Thunder controller, obtains the `ILifeTime` proxy, and issues `Activate()` or `Deactivate()`. Implements the configurable retry loop with timed inter-attempt sleep and elapsed-time logging. | `COMRPCStarter.cpp`, `COMRPCStarter.h` |
-| `Log` | Lightweight logging module providing four severity macros (`LOG_DBG`, `LOG_INF`, `LOG_WARN`, `LOG_ERROR`) that write formatted messages to stderr. Each message includes a severity tag, source filename, line number, function name, and the plugin callsign. Verbosity is controlled by the global `gActivatorLogLevel` variable. | `Log.cpp`, `Log.h` |
-| `Module` | WPEFramework module registration unit. Declares the module name `PluginStarter` and embeds the build reference string via `MODULE_NAME_DECLARATION(BUILD_REFERENCE)`. Includes the WPEFramework core, COM, and plugins headers required across all translation units. | `Module.cpp`, `Module.h` |
+| Module / Class              | Description                                                                                                                                                                                                                                                                                                                                                                                                              | Key Files                              |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------- |
+| `main` (static `parseArgs`) | Entry point. Parses `-h`, `-r`, `-d`, `-p`, `-v` and the callsign using `getopt_long`. Stores the results in static globals (`gRetryCount`, `gRetryDelayMs`, `gPluginName`, `gLogLevel`, `gPluginActivatorCallsign`). Calls `initLogging()`, creates a `COMRPCStarter` through an `IPluginStarter` pointer, calls `activatePlugin()`, then calls `Core::Singleton::Dispose()`. Returns `EXIT_SUCCESS` or `EXIT_FAILURE`. | `main.cpp`                             |
+| `IPluginStarter`            | Abstract interface exposing `activatePlugin(maxRetries, retryDelayMs, pluginActivatorCallsign)`. Blocks until the plugin is active or the retries are used up.                                                                                                                                                                                                                                                           | `IPluginStarter.h`                     |
+| `COMRPCStarter`             | COM-RPC implementation of `IPluginStarter`. Opens the controller connector, queries `IPluginAsyncStateControl` on the PIS callsign, calls `Activate()`, and waits on the `PluginActivatorCallback` sink. Implements the tool-level retry loop for connection and COM errors, with elapsed-time logging.                                                                                                                  | `COMRPCStarter.cpp`, `COMRPCStarter.h` |
+| `Log`                       | Severity-tagged logging to stderr through the `LOG_DBG`, `LOG_INF`, `LOG_WARN`, and `LOG_ERROR` macros. `initLogging()` stores the level in the global `gActivatorLogLevel`.                                                                                                                                                                                                                                             | `Log.cpp`, `Log.h`                     |
+| `Module`                    | WPEFramework module declaration. Uses `MODULE_NAME_DECLARATION(BUILD_REFERENCE)`. `BUILD_REFERENCE` defaults to `engineering_build_for_debug_purpose_only` if not set in CMake. `MODULE_NAME` defaults to `PluginStarter`.                                                                                                                                                                                                                                          | `Module.cpp`, `Module.h`               |
 
 ---
 
 ## Component Interactions
 
-ThunderPluginActivator communicates with the WPEFramework Thunder controller over COM-RPC to manage plugin lifecycle.
-
-### Interaction Matrix
-
-| Target Component / Layer | Interaction Purpose | Key APIs / Topics |
-|---|---|---|
-| **WPEFramework Thunder Controller** | Activate or deactivate a named Thunder plugin by callsign | `Exchange::Controller::ILifeTime::Activate()`, `Exchange::Controller::ILifeTime::Deactivate()` |
+| Target Component / Layer            | Interaction Purpose                                                                           | Key APIs / Topics                                                                                                                                                       |
+| ----------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **WPEFramework Thunder Controller** | Open the COM-RPC connection and obtain the `PluginHost::IShell`. Look up the PIS by callsign. | `RPC::SmartControllerInterfaceType<Exchange::Controller::ILifeTime>` (connector, used only to open the connection), `ControllerInterface()`, `PluginHost::IShell::QueryInterfaceByCallsign()` |
+| **PluginInitializerService (PIS)**  | Activate the named plugin and receive the result.                                             | `Exchange::IPluginAsyncStateControl::Activate()`, `Exchange::IPluginAsyncStateControl::IActivationCallback::Finished()`, `Release()`                                    |
 
 ### IPC Flow Patterns
 
-**Primary Request / Response Flow:**
-
-```mermaid
-sequenceDiagram
-    participant Systemd as systemd
-    participant PA as ThunderPluginActivator
-    participant Thunder as WPEFramework Controller
-
-    Systemd->>PA: Process invocation (callsign, options)
-    Note over PA: Parse args, initialize logging, open COM-RPC connector
-    PA->>Thunder: COM-RPC: ILifeTime::Activate(callsign)
-    Thunder-->>PA: ERROR_NONE or error code
-    Note over PA: On error: retry up to maxRetries with retryDelayMs sleep
-    PA-->>Systemd: Exit 0 (success) / Exit 1 (failure)
-```
+- **Request / response**: The tool sends one `Activate()` request per attempt. The PIS returns `ERROR_NONE` to accept the request, or an error code to reject it.
+- **Result**: The PIS reports the outcome asynchronously through `Finished(callsign, state, retries)`. The state is `SUCCESS`, `FAILURE`, or aborted.
+- **Connection**: The tool opens the connector only if it is not already operational, and closes it on exit if it is still open. Each call uses `RPC::CommunicationTimeOut`.
 
 ---
 
@@ -282,44 +179,100 @@ sequenceDiagram
 
 ### Key Implementation Logic
 
-- **State / Lifecycle Management**: Each invocation of the binary starts fresh. The retry counter and success flag are local variables within `activatePlugin()` and `deactivatePlugin()` in `COMRPCStarter.cpp`. The elapsed time of each activation attempt is measured using `Core::Time::Now()` and included in log output.
+- **State and lifecycle**: Each invocation starts fresh. The retry counter and success flag are local variables inside `COMRPCStarter::activatePlugin()`.
+- **Timing**: Each attempt is timed with `Core::StopWatch`, and the elapsed milliseconds are included in the log messages.
+- **Attempt budget**: The retry counter starts at 0, and the loop runs while the counter is at most `--retries`. Each PIS request gets `retries - counter` as its retry count, so the PIS budget shrinks as tool-level retries are used.
+- **Synchronization**: The `Finished()` callback sets a promise. The main thread waits on the matching future, then waits for the sink to be released before it releases the PIS interface.
 
-- **Error Handling Strategy**: Error codes returned by `ILifeTime::Activate()` and `ILifeTime::Deactivate()` are logged with their string representation via `Core::ErrorToString()`. The code `ERROR_PENDING_CONDITIONS` is identified and logged distinctly to communicate that plugin preconditions are unmet. All other non-zero results are treated as retriable failures. After exhausting the maximum retry count, a final error is logged and the function returns `false`, causing the process to exit with status `1`. COM-RPC connector open failures are also logged and treated as retriable.
+### Error Handling
 
-- **Logging & Diagnostics**: Log messages are written to stderr. Each message includes a severity tag (`[ERR]`, `[WRN]`, `[NFO]`, `[DBG]`), the source filename, line number, function name, and the plugin callsign context. The default log level is INFO. Verbosity can be raised to DEBUG by passing one or more `-v` flags at invocation. The log level is stored in the global `gActivatorLogLevel` variable, initialized in `Log.cpp` via `initLogging()`.
+Return codes from `IPluginAsyncStateControl::Activate()` are logged with `Core::ErrorToString()`.
+
+| Condition                                                   | Logged as | Tool action                        |
+| ----------------------------------------------------------- | --------- | ---------------------------------- |
+| Connector cannot be opened                                  | ERROR     | Retry after the delay              |
+| PIS interface is null                                       | ERROR     | Retry after the delay              |
+| `Activate()` returns a COM error (COM error bit set)        | ERROR     | Retry after the delay              |
+| `Activate()` returns `ERROR_NONE`, callback state `SUCCESS` | INFO      | Stop, exit 0                       |
+| `Activate()` returns `ERROR_NONE`, callback state `FAILURE` | ERROR     | Stop, exit 1 (PIS already retried) |
+| `Activate()` returns `ERROR_NONE`, callback state aborted   | ERROR     | Stop, exit 1                       |
+| `Activate()` returns `ERROR_INPROGRESS`                     | ERROR     | Stop, exit 1                       |
+| `Activate()` returns `ERROR_ILLEGAL_STATE`                  | ERROR     | Stop, exit 1                       |
+| `Activate()` returns `ERROR_NOT_EXIST`                      | ERROR     | Stop, exit 1                       |
+| `Activate()` returns any other non-COM error                | ERROR     | Stop, exit 1                       |
+| Retry counter exceeds `--retries`                           | ERROR     | Give up, exit 1                    |
+
+### Timeouts
+
+- The COM-RPC connector timeout is `RPC::CommunicationTimeOut`.
+- Debug builds (`__DEBUG__`) use a 1000 ms timeout instead.
+
+### Logging
+
+- **Output**: Messages go to stderr. Each message has a severity tag (`[ERR]`, `[WRN]`, `[NFO]`, `[DBG]`), the source file name and line, the function name, and the plugin callsign, in this form: `[NFO][COMRPCStarter.cpp:42][activatePlugin] (DisplayInfo) message`.
+- **Levels**: A message is printed when its level is at or below the active level. ERROR is the lowest number and is always printed by default. DEBUG is the most verbose.
+- **Default**: The level is INFO. One `-v` raises it to DEBUG. Additional `-v` flags have no effect.
+- **Current output**: `COMRPCStarter` uses only `LOG_INF` and `LOG_ERROR`, so `-v` does not change the messages printed during activation.
 
 ---
 
 ## Configuration
 
-### Key Configuration Parameters
+### Command-Line Options
 
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `callsign` | string | _(required)_ | Callsign of the Thunder plugin to activate or deactivate. |
-| `--retries` / `-r` | int | `100` | Maximum number of activation or deactivation attempts before giving up. |
-| `--delay` / `-d` | int | `500` | Delay in milliseconds between consecutive retry attempts. |
-| `--verbose` / `-v` | flag | INFO level | Increases the log level by one step per flag occurrence, up to DEBUG. |
-| `--deactivate` / `-x` | flag | `false` | When set, deactivates the named plugin instead of activating it. |
+| Option                        | Argument | Default                    | Description                                                                                                                                                                                                                                                      |
+| ----------------------------- | -------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `callsign` (positional)       | string   | _(required)_               | Callsign of the Thunder plugin to activate. If missing, the tool prints an error and exits with `EXIT_FAILURE`. Extra positional arguments are ignored with a warning.                                                                                           |
+| `--retries` / `-r`            | int      | `100`                      | Maximum retries. Passed to the PIS and used for tool-level retries. Negative values are rejected. Zero is accepted, although the error text says "must be > 0". Values above 255 wrap when converted to the 8-bit parameter. A non-numeric value is read as `0`. |
+| `--delay` / `-d`              | int (ms) | `500`                      | Delay between retries. Passed to the PIS as a 16-bit value. Negative values are rejected. Zero is accepted. Values above 65535 wrap. A non-numeric value is read as `0`.                                                                                         |
+| `--plugininitcallsign` / `-p` | string   | `PluginInitializerService` | Callsign of the PIS that performs the activation.                                                                                                                                                                                                                |
+| `--verbose` / `-v`            | flag     | INFO                       | Raises the log level by one step per occurrence, up to DEBUG.                                                                                                                                                                                                    |
+| `--help` / `-h`               | flag     | —                          | Prints usage and exits. The exit status is `EXIT_FAILURE`, not success.                                                                                                                                                                                          |
+
+Running with no arguments prints usage and exits with `EXIT_FAILURE`.
+
+### Exit Status
+
+| Status             | Meaning                                                                  |
+| ------------------ | ------------------------------------------------------------------------ |
+| `EXIT_SUCCESS` (0) | The plugin was activated.                                                |
+| `EXIT_FAILURE` (1) | Invalid arguments, the `-h` option, or activation failed or was aborted. |
 
 ### Runtime Configuration
 
-Configuration is supplied entirely via command-line arguments at process start.
+Activate a plugin with 20 retries and a 1000 ms delay:
 
 ```bash
-# Activate a plugin with default retry settings
-PluginActivator <callsign>
+PluginActivator --retries 20 --delay 1000 DisplayInfo
+```
 
-# Activate with custom retry count and delay
-PluginActivator --retries 20 --delay 1000 <callsign>
+Use a non-default PIS callsign and verbose logging:
 
-# Deactivate a plugin
-PluginActivator --deactivate <callsign>
+```bash
+PluginActivator -p PluginInitializerService -v -v DisplayInfo
+```
 
-# Increase log verbosity to DEBUG
-PluginActivator -v -v <callsign>
+Illustrative systemd unit fragment (the paths and unit name are examples):
+
+```ini
+[Unit]
+Description=Activate DisplayInfo plugin
+After=thunder.service
+Requires=thunder.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/PluginActivator --retries 100 --delay 500 DisplayInfo
 ```
 
 ### Configuration Persistence
 
-All operational parameters are passed at invocation time. Each execution of `PluginActivator` operates solely on the arguments supplied to it.
+ThunderPluginActivator stores no configuration. Every setting comes from the command line for each invocation. It does not read or write files. Its log output goes to stderr, which systemd typically captures to the journal.
+
+### Limitations
+
+- The tool activates plugins only. It cannot deactivate them.
+- The retry delay is fixed. There is no back-off.
+- Option values are narrowed silently to the PIS parameter types, so large values wrap.
+- `-h` exits with a failure status.
+- `-v` does not change the messages printed during activation.
