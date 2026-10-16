@@ -34,13 +34,6 @@ jobs:
         repository: rdkcentral/ThunderExtensions
         ref: main
 
-    - name: Set up Python environment
-      run: |
-        python3 -m venv venv
-        source venv/bin/activate
-        pip install --upgrade pip
-        pip install jsonref
-
     - name: Download Thunder artifact
       uses: actions/download-artifact@v4
       with:
@@ -52,19 +45,10 @@ jobs:
         tar -xvzf ${{ matrix.build_type }}/${{ matrix.build_type }}${{ matrix.architecture == '32' && '_x86' || '' }}.tar.gz
         rm ${{ matrix.build_type }}/${{ matrix.build_type }}${{ matrix.architecture == '32' && '_x86' || '' }}.tar.gz
 
-    - name: Build ThunderExtensions
+    - name: Stage ThunderExtensions headers
       run: |
-        source venv/bin/activate
-        ${{ matrix.architecture == '32' && 'export PKG_CONFIG_PATH=/usr/lib/i386-linux-gnu/pkgconfig:$PKG_CONFIG_PATH' || 'export PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH' }}
-        cmake -G Ninja -S ThunderExtensions -B ${{ matrix.build_type }}/build/ThunderExtensions \
-          -DCMAKE_CXX_FLAGS="-m${{ matrix.architecture }}" \
-          -DCMAKE_C_FLAGS="-m${{ matrix.architecture }}" \
-          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-          -DCMAKE_INSTALL_PREFIX="${PWD}/${{ matrix.build_type }}/install/usr" \
-          -DCMAKE_MODULE_PATH="${PWD}/${{ matrix.build_type }}/install/usr/include/Thunder/Modules;${PWD}/${{ matrix.build_type }}/install/usr/include/WPEFramework/Modules" \
-          -DCMAKE_PREFIX_PATH="${PWD}/${{ matrix.build_type }}/install/usr" \
-          -DEXT_PLUGIN_INITIALIZER=ON
-        cmake --build ${{ matrix.build_type }}/build/ThunderExtensions --target install
+        install -d "${PWD}/${{ matrix.build_type }}/install/usr/include/Thunder/extensions"
+        cp ThunderExtensions/interfaces/*.h "${PWD}/${{ matrix.build_type }}/install/usr/include/Thunder/extensions/"
 
     - name: Build ThunderPluginActivator
       run: |
