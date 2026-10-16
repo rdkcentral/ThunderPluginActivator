@@ -21,7 +21,10 @@ project(PluginActivator)
 
 set(CMAKE_CXX_STANDARD 11)
 
-find_package(WPEFramework)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
+find_package(Thunder REQUIRED)
+find_package(ThunderExtensions REQUIRED)
 
 find_package(${NAMESPACE}Core REQUIRED)
 find_package(${NAMESPACE}COM REQUIRED)
@@ -40,6 +43,7 @@ target_link_libraries(PluginActivator
     ${NAMESPACE}Core::${NAMESPACE}Core
     ${NAMESPACE}COM::${NAMESPACE}COM
     ${NAMESPACE}Plugins::${NAMESPACE}Plugins
+    ThunderExtensions::ThunderExtensions
     CompileSettingsDebug::CompileSettingsDebug
 )
 
