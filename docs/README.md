@@ -53,8 +53,8 @@ graph TD
 
 ### RDK-V Platform and Integration Requirements
 
-- **WPEFramework**: The build uses `find_package(WPEFramework)` and links the `${NAMESPACE}COM` package, which provides the COM-RPC interfaces used here.
-- **Build dependencies**: `${NAMESPACE}Core`, `${NAMESPACE}COM`, `${NAMESPACE}Plugins`, and `CompileSettingsDebug`. The build has no code-generation or native-tools step.
+- **Thunder**: The build uses `find_package(Thunder REQUIRED)` and links the `${NAMESPACE}COM` package for COM-RPC support.
+- **Build dependencies**: `Thunder`, `ThunderExtensions`, `${NAMESPACE}Core`, `${NAMESPACE}COM`, `${NAMESPACE}Plugins`, and `CompileSettingsDebug`. The build has no code-generation or native-tools step.
 - **Runtime dependencies**: The Thunder controller must be running and reachable over COM-RPC. The PIS must be active in Thunder under the callsign given with `-p` (default `PluginInitializerService`). The tool does not start the PIS.
 - **Systemd**: Declare an ordering and requirement dependency on the Thunder service in units that use this tool, so activation begins after Thunder is up.
 
