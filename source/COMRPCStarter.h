@@ -20,7 +20,7 @@
 #pragma once
 #include "Module.h"
 
-#include <interfaces/IPluginAsyncStateControl.h>
+#include <extensions/IPluginAsyncStateControl.h>
 
 #include "IPluginStarter.h"
 
