@@ -24,6 +24,7 @@
 #include <chrono>
 #include <thread>
 #include <inttypes.h>
+#include <stdio.h>
 
 void COMRPCStarter::PluginActivatorCallback::Finished(const string& callsign, const Exchange::IPluginAsyncStateControl::IActivationCallback::state state, const uint8_t numberofretries) 
 {
@@ -159,6 +160,8 @@ bool COMRPCStarter::activatePlugin(const uint8_t maxRetries, const uint16_t retr
     if (_connector.IsOperational() == true) {
         _connector.Close(_timeoutvalue);
     }
+
+    printf("Test Coverity Workflow %s");
 
     return success;
 }
