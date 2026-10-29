@@ -5,6 +5,12 @@ permissions:
 
 on:
   workflow_call:
+    inputs:
+      thunderextensions-ref:
+        description: ThunderExtensions branch, tag, or commit SHA to check out
+        required: false
+        type: string
+        default: main
 
 jobs:
   ThunderPluginActivator:
@@ -32,7 +38,7 @@ jobs:
       with:
         path: ThunderExtensions
         repository: rdkcentral/ThunderExtensions
-        ref: main
+        ref: ${{ inputs.thunderextensions-ref }}
 
     - name: Download Thunder artifact
       uses: actions/download-artifact@v4
