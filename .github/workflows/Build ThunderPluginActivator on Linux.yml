@@ -10,9 +10,9 @@ concurrency:
 on:
   workflow_dispatch:
   push:
-    branches: ["main"]
+    branches: ["main", "R*"]
   pull_request:
-    branches: ["main"]
+    branches: ["main", "R*"]
 
 jobs:
   Thunder:
@@ -21,3 +21,5 @@ jobs:
   ThunderPluginActivator:
     needs: Thunder
     uses: ./.github/workflows/Linux build template.yml
+    with:
+      source-repository: ${{ github.repository }}

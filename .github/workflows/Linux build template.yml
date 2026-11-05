@@ -6,11 +6,16 @@ permissions:
 on:
   workflow_call:
     inputs:
-      thunderextensions-ref:
-        description: ThunderExtensions branch, tag, or commit SHA to check out
+      source-repository:
+        description: Repository containing the ThunderPluginActivator source
         required: false
         type: string
-        default: main
+        default: rdkcentral/ThunderPluginActivator
+      thunderextensions-repository:
+        description: Repository containing the ThunderExtensions source
+        required: false
+        type: string
+        default: rdkcentral/ThunderExtensions
 
 jobs:
   ThunderPluginActivator:
@@ -28,18 +33,39 @@ jobs:
       with:
         architecture: ${{ matrix.architecture }}
 
+    - name: Resolve release dependency branch
+      id: release
+      shell: bash
+      env:
+        BUILD_BRANCH: ${{ github.base_ref || github.ref_name }}
+        REF_TYPE: ${{ github.ref_type }}
+      run: |
+        release_ref=
+        if [[ "$REF_TYPE" == 'branch' && "$BUILD_BRANCH" == R* ]]; then
+          release_ref="refs/heads/$BUILD_BRANCH"
+        fi
+        echo "ref=$release_ref" >> "$GITHUB_OUTPUT"
+        echo "Dependency branch: ${release_ref:-repository default}"
+
     - name: Checkout PluginActivator
       uses: actions/checkout@v5
       with:
         path: PluginActivator
-        repository: rdkcentral/ThunderPluginActivator
+        repository: ${{ inputs.source-repository }}
+        ref: ${{ github.repository != inputs.source-repository && steps.release.outputs.ref || '' }}
 
     - name: Checkout ThunderExtensions
       uses: actions/checkout@v5
       with:
         path: ThunderExtensions
-        repository: rdkcentral/ThunderExtensions
-        ref: ${{ inputs.thunderextensions-ref }}
+        repository: ${{ inputs.thunderextensions-repository }}
+        ref: ${{ github.repository != inputs.thunderextensions-repository && steps.release.outputs.ref || '' }}
+
+    - name: Log source revisions
+      shell: bash
+      run: |
+        git -C PluginActivator log -1 --format='ThunderPluginActivator: %H'
+        git -C ThunderExtensions log -1 --format='ThunderExtensions: %H'
 
     - name: Download Thunder artifact
       uses: actions/download-artifact@v4
